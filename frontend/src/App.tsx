@@ -212,6 +212,23 @@ type PaperTradeLog = {
   message: string;
 };
 
+type BacktestQualityCheck = {
+  name: string;
+  pass: boolean;
+  current: string;
+  target: string;
+};
+
+type BacktestQualitySummary = {
+  verdict: "PASS" | "WATCH" | "FAIL";
+  grade: "A" | "B" | "C" | "D" | "E";
+  checks: BacktestQualityCheck[];
+  passCount: number;
+  totalChecks: number;
+  profitFactor: number | null;
+  expectancyPerTrade: number;
+};
+
 const defaultPositions = JSON.stringify(
   [
     { symbol: "RELIANCE", qty: 10, avg_price: 2450, last_price: 2525 },
@@ -277,6 +294,77 @@ function strategyParamsFromScanItem(
     params.fundamental_score = Number(item.fundamental.score.toFixed(2));
   }
   return params;
+}
+
+function evaluateBacktestQuality(backtest: BacktestResponse): BacktestQualitySummary {
+  const totalTrades = backtest.trades.length;
+  const grossProfit = backtest.trades
+    .filter((trade) => trade.pnl > 0)
+    .reduce((sum, trade) => sum + trade.pnl, 0);
+  const grossLossAbs = Math.abs(
+    backtest.trades
+      .filter((trade) => trade.pnl < 0)
+      .reduce((sum, trade) => sum + trade.pnl, 0)
+  );
+  const totalPnl = backtest.trades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const expectancyPerTrade = totalTrades > 0 ? totalPnl / totalTrades : 0;
+  const profitFactor = grossLossAbs > 0 ? grossProfit / grossLossAbs : grossProfit > 0 ? 99 : null;
+
+  const checks: BacktestQualityCheck[] = [
+    {
+      name: "Sample Size",
+      pass: totalTrades >= 30,
+      current: `${totalTrades} trades`,
+      target: ">= 30 trades",
+    },
+    {
+      name: "Total Return",
+      pass: backtest.total_return_pct >= 3,
+      current: `${fmt(backtest.total_return_pct)}%`,
+      target: ">= 3.00%",
+    },
+    {
+      name: "Win Rate",
+      pass: backtest.win_rate_pct >= 42,
+      current: `${fmt(backtest.win_rate_pct)}%`,
+      target: ">= 42.00%",
+    },
+    {
+      name: "Sharpe",
+      pass: backtest.sharpe >= 0.8,
+      current: fmt(backtest.sharpe),
+      target: ">= 0.80",
+    },
+    {
+      name: "Max Drawdown",
+      pass: backtest.max_drawdown_pct <= 4,
+      current: `${fmt(backtest.max_drawdown_pct)}%`,
+      target: "<= 4.00%",
+    },
+  ];
+
+  const passCount = checks.filter((check) => check.pass).length;
+  const totalChecks = checks.length;
+
+  let verdict: BacktestQualitySummary["verdict"] = "FAIL";
+  if (passCount === totalChecks) {
+    verdict = "PASS";
+  } else if (passCount >= 3) {
+    verdict = "WATCH";
+  }
+
+  const grade: BacktestQualitySummary["grade"] =
+    passCount === 5 ? "A" : passCount === 4 ? "B" : passCount === 3 ? "C" : passCount === 2 ? "D" : "E";
+
+  return {
+    verdict,
+    grade,
+    checks,
+    passCount,
+    totalChecks,
+    profitFactor,
+    expectancyPerTrade,
+  };
 }
 
 export default function App() {
@@ -469,6 +557,11 @@ export default function App() {
       decision,
     };
   }, [analysis, liveNews]);
+
+  const backtestQuality = useMemo(() => {
+    if (!backtest) return null;
+    return evaluateBacktestQuality(backtest);
+  }, [backtest]);
 
   useEffect(() => {
     if (!scanner?.results.length) return;
@@ -1722,7 +1815,52 @@ export default function App() {
 
         {backtest && (
           <section className="panel panel-wide">
-            <h3>Backtest Result</h3>
+            <div className="panel-topline">
+              <h3>Backtest Result</h3>
+              <span
+                className={`grade-chip strategy-grade ${
+                  backtestQuality?.verdict === "PASS"
+                    ? "bias-bull"
+                    : backtestQuality?.verdict === "WATCH"
+                      ? "bias-neutral"
+                      : "bias-bear"
+                }`}
+              >
+                {backtestQuality ? `Quality ${backtestQuality.verdict} • Grade ${backtestQuality.grade}` : "-"}
+              </span>
+            </div>
+            <p className="muted">
+              Gate: trades &gt;= 30, return &gt;= 3%, win rate &gt;= 42%, sharpe &gt;= 0.8, max drawdown &lt;= 4%.
+            </p>
+            <div className="quality-grid">
+              {backtestQuality?.checks.map((check) => (
+                <article key={check.name} className={`quality-item ${check.pass ? "pass" : "fail"}`}>
+                  <strong>{check.name}</strong>
+                  <span>{check.current}</span>
+                  <span className="quality-target">Target: {check.target}</span>
+                </article>
+              ))}
+            </div>
+            <div className="headline-grid">
+              <article>
+                <label>Checks Passed</label>
+                <p className="big">
+                  {backtestQuality?.passCount}/{backtestQuality?.totalChecks}
+                </p>
+              </article>
+              <article>
+                <label>Quality Verdict</label>
+                <p className="big">{backtestQuality?.verdict ?? "-"}</p>
+              </article>
+              <article>
+                <label>Profit Factor</label>
+                <p className="big">{backtestQuality?.profitFactor == null ? "-" : fmt(backtestQuality.profitFactor)}</p>
+              </article>
+              <article>
+                <label>Expectancy / Trade</label>
+                <p className="big">{backtestQuality ? fmt(backtestQuality.expectancyPerTrade) : "-"}</p>
+              </article>
+            </div>
             <div className="kv-grid">
               <div>
                 <span>Total Return</span>
@@ -1749,6 +1887,20 @@ export default function App() {
                 <strong>{fmt(backtest.equity_curve[backtest.equity_curve.length - 1]?.equity ?? capital)}</strong>
               </div>
             </div>
+            {backtestQuality && backtestQuality.verdict !== "PASS" ? (
+              <div className="warn-box">
+                <p><b>Not ready for paper or live deployment yet.</b></p>
+                <ul className="checklist">
+                  {backtestQuality.checks
+                    .filter((check) => !check.pass)
+                    .map((check) => (
+                      <li key={check.name}>
+                        {check.name}: {check.current} (target {check.target})
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ) : null}
             <h4>Recent Trades</h4>
             <div className="table-wrap">
               <table>

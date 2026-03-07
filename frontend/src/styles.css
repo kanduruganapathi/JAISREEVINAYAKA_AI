@@ -418,6 +418,10 @@ textarea {
   padding: 0.24rem 0.56rem;
 }
 
+.strategy-grade {
+  font-weight: 700;
+}
+
 .headline-grid {
   margin-top: 0.45rem;
   display: grid;
@@ -528,6 +532,11 @@ textarea {
 .quality-item span {
   font-size: 0.72rem;
   color: var(--muted);
+}
+
+.quality-item .quality-target {
+  font-size: 0.66rem;
+  color: var(--neutral);
 }
 
 .quality-item.pass {
