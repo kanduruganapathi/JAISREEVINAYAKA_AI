@@ -131,10 +131,10 @@ export type StockScanResponse = {
     overall_score: number;
     bias: Bias;
     action: "buy" | "sell" | "watch";
-    technical: { score: number; signal: Bias; summary: string };
-    breakout: { score: number; signal: Bias; summary: string };
-    fundamental: { score: number; signal: Bias; summary: string };
-    news: { score: number; signal: Bias; summary: string };
+    technical: { score: number; signal: Bias; summary: string; meta?: Record<string, string> };
+    breakout: { score: number; signal: Bias; summary: string; meta?: Record<string, string> };
+    fundamental: { score: number; signal: Bias; summary: string; meta?: Record<string, string> };
+    news: { score: number; signal: Bias; summary: string; meta?: Record<string, string> };
     technical_snapshot: Record<string, number>;
     intraday_plan: {
       direction: "long" | "short" | "neutral";

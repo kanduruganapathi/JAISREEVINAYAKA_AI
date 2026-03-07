@@ -18,6 +18,7 @@ class ScanFactor(BaseModel):
     score: float = Field(ge=0.0, le=1.0)
     signal: Literal["bullish", "bearish", "neutral"]
     summary: str
+    meta: dict[str, str] = Field(default_factory=dict)
 
 
 class IntradayPlan(BaseModel):

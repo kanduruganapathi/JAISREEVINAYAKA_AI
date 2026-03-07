@@ -104,6 +104,31 @@ export default function App() {
     [analysis]
   );
 
+  const liveNews = useMemo(() => {
+    const empty = {
+      headlines: [] as string[],
+      source: "-",
+      mode: "-",
+      timestamp: "-",
+      sentiment: "neutral",
+      score: 0.5,
+    };
+    if (!analysis) return empty;
+    const signal = analysis.signals.find((x) => x.agent === "news_analyst");
+    if (!signal) return empty;
+
+    const details = signal.details as Record<string, unknown>;
+    const headlines = Array.isArray(details.headlines) ? details.headlines.map((x) => String(x)) : [];
+    return {
+      headlines,
+      source: String(details.source ?? "-"),
+      mode: String(details.mode ?? "-"),
+      timestamp: String(details.timestamp ?? "-"),
+      sentiment: String(details.sentiment ?? "neutral"),
+      score: Number(details.score ?? signal.confidence ?? 0.5),
+    };
+  }, [analysis]);
+
   const refreshHealth = async () => {
     try {
       const h = await api.health();
@@ -397,6 +422,24 @@ export default function App() {
           )}
         </section>
 
+        <section className="panel">
+          <div className="panel-topline">
+            <h3>Live News Pulse</h3>
+            <span className={`live-pill ${biasClass(liveNews.sentiment)}`}>
+              {liveNews.sentiment.toUpperCase()} {Math.round(liveNews.score * 100)}%
+            </span>
+          </div>
+          <p className="muted">
+            Source: {liveNews.source} • Mode: {liveNews.mode} • Updated: {liveNews.timestamp}
+          </p>
+          <ul className="checklist">
+            {liveNews.headlines.slice(0, 4).map((h) => (
+              <li key={h}>{h}</li>
+            ))}
+          </ul>
+          {!liveNews.headlines.length ? <p className="muted">No live headlines available for this symbol right now.</p> : null}
+        </section>
+
         <section className="panel panel-wide">
           <h3>Strategy Ideas</h3>
           <div className="ideas-grid">
@@ -494,6 +537,12 @@ export default function App() {
                       <span>{Math.round(item.overall_score * 100)}%</span>
                     </header>
                     <p className="muted">Action: {item.action.toUpperCase()} • Bias: {item.bias.toUpperCase()}</p>
+                    <p className="muted">
+                      News Mode: {item.news.meta?.mode ?? "-"} • Source: {item.news.meta?.source ?? "-"}
+                    </p>
+                    <p>
+                      <b>News:</b> {item.news.summary || "No headline summary"}
+                    </p>
                     <p>
                       <b>Setup:</b> {item.intraday_plan.setup}
                     </p>
@@ -524,6 +573,7 @@ export default function App() {
                       <th>Symbol</th>
                       <th>Overall</th>
                       <th>News</th>
+                      <th>News Mode</th>
                       <th>Fundamental</th>
                       <th>Breakout</th>
                       <th>Technical</th>
@@ -537,6 +587,7 @@ export default function App() {
                         <td>{item.symbol}</td>
                         <td>{Math.round(item.overall_score * 100)}%</td>
                         <td>{Math.round(item.news.score * 100)}%</td>
+                        <td>{item.news.meta?.mode ?? "-"}</td>
                         <td>{Math.round(item.fundamental.score * 100)}%</td>
                         <td>{Math.round(item.breakout.score * 100)}%</td>
                         <td>{Math.round(item.technical.score * 100)}%</td>

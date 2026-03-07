@@ -102,13 +102,22 @@ class StockScannerService:
         )
         return ScanFactor(score=round(score, 2), signal=signal, summary=summary)
 
-    def _news_factor(self, symbol: str) -> ScanFactor:
-        snapshot = self.news.summarize(symbol)
+    def _news_factor(self, symbol: str, force_live: bool = False) -> ScanFactor:
+        snapshot = self.news.summarize(symbol, force_live=force_live)
         sentiment = snapshot.get("sentiment", "neutral")
         score = float(snapshot.get("score", 0.5))
         signal = "bullish" if sentiment == "positive" else "bearish" if sentiment == "negative" else "neutral"
         summary = "; ".join(snapshot.get("headlines", [])[:2])
-        return ScanFactor(score=round(score, 2), signal=signal, summary=summary)
+        return ScanFactor(
+            score=round(score, 2),
+            signal=signal,
+            summary=summary,
+            meta={
+                "mode": str(snapshot.get("mode", "unknown")),
+                "source": str(snapshot.get("source", "unknown")),
+                "timestamp": str(snapshot.get("timestamp", "")),
+            },
+        )
 
     def _technical_factor(self, symbol: str, timeframe: str) -> tuple[ScanFactor, dict[str, float], dict]:
         candles = self.data.get_candles(symbol, timeframe, 220)
@@ -269,25 +278,98 @@ class StockScannerService:
         symbols = req.symbols if req.universe == "custom" and req.symbols else NIFTY50_SYMBOLS
         items: list[StockScanResult] = []
 
+        staged: list[dict] = []
+        neutral_news = ScanFactor(
+            score=0.5,
+            signal="neutral",
+            summary="News score pending live pull.",
+            meta={"mode": "deferred", "source": "none", "timestamp": ""},
+        )
+
         for symbol in symbols:
             candles = self.data.get_candles(symbol, req.timeframe, 220)
             technical, snapshot, _smc = self._technical_factor(symbol, req.timeframe)
             breakout = self._breakout_factor(snapshot, candles)
             fundamental = self._fundamental_factor(symbol)
-            news = self._news_factor(symbol)
-
-            if not req.include_news:
-                news = ScanFactor(score=0.5, signal="neutral", summary="News check disabled.")
             if not req.include_fundamental:
-                fundamental = ScanFactor(score=0.5, signal="neutral", summary="Fundamental check disabled.")
+                fundamental = ScanFactor(
+                    score=0.5,
+                    signal="neutral",
+                    summary="Fundamental check disabled.",
+                    meta={"mode": "disabled"},
+                )
             if not req.include_breakout:
-                breakout = ScanFactor(score=0.5, signal="neutral", summary="Breakout check disabled.")
+                breakout = ScanFactor(
+                    score=0.5,
+                    signal="neutral",
+                    summary="Breakout check disabled.",
+                    meta={"mode": "disabled"},
+                )
             if not req.include_technical:
-                technical = ScanFactor(score=0.5, signal="neutral", summary="Technical check disabled.")
+                technical = ScanFactor(
+                    score=0.5,
+                    signal="neutral",
+                    summary="Technical check disabled.",
+                    meta={"mode": "disabled"},
+                )
+
+            provisional_score, provisional_bias, provisional_action = self._aggregate(
+                technical,
+                breakout,
+                fundamental,
+                neutral_news,
+            )
+
+            staged.append(
+                {
+                    "symbol": symbol,
+                    "candles": candles,
+                    "technical": technical,
+                    "breakout": breakout,
+                    "fundamental": fundamental,
+                    "snapshot": snapshot,
+                    "provisional_score": provisional_score,
+                    "provisional_bias": provisional_bias,
+                    "provisional_action": provisional_action,
+                }
+            )
+
+        staged_ranked = sorted(staged, key=lambda x: x["provisional_score"], reverse=True)
+        if req.include_news:
+            if len(symbols) <= 20:
+                news_symbols = {x["symbol"] for x in staged_ranked}
+            else:
+                priority_count = min(len(symbols), max(req.top_n * 3, 20))
+                news_symbols = {x["symbol"] for x in staged_ranked[:priority_count]}
+        else:
+            news_symbols = set()
+
+        for row in staged_ranked:
+            symbol = row["symbol"]
+            technical = row["technical"]
+            breakout = row["breakout"]
+            fundamental = row["fundamental"]
+            snapshot = row["snapshot"]
+
+            if req.include_news and symbol in news_symbols:
+                news = self._news_factor(symbol, force_live=True)
+            elif req.include_news:
+                news = ScanFactor(
+                    score=0.5,
+                    signal="neutral",
+                    summary="Live news prioritized for top-ranked candidates only.",
+                    meta={"mode": "deferred", "source": "none", "timestamp": ""},
+                )
+            else:
+                news = ScanFactor(
+                    score=0.5,
+                    signal="neutral",
+                    summary="News check disabled.",
+                    meta={"mode": "disabled"},
+                )
 
             overall_score, bias, action = self._aggregate(technical, breakout, fundamental, news)
             intraday_plan = self._intraday_plan(symbol, overall_score, bias, snapshot, breakout)
-
             items.append(
                 StockScanResult(
                     symbol=symbol,

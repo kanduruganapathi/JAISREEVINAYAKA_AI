@@ -12,7 +12,7 @@ class NewsAgent(BaseAgent):
         self.news = NewsService()
 
     async def run(self, request: AnalysisRequest, candles_by_tf: dict[str, list]) -> AgentSignal:
-        summary = self.news.summarize(request.symbol)
+        summary = self.news.summarize(request.symbol, force_live=True)
         sentiment = summary["sentiment"]
         score = summary["score"]
 
