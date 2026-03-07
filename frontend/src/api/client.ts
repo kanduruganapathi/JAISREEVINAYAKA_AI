@@ -34,6 +34,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  syncGrowwPortfolio: () =>
+    request("/api/v1/portfolio/groww/sync", {
+      method: "POST",
+    }),
+  runScanner: (payload: unknown) =>
+    request("/api/v1/scanner/run", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   placeOrder: (payload: unknown) =>
     request("/api/v1/trading/order", {
       method: "POST",

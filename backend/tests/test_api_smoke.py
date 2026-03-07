@@ -37,3 +37,20 @@ def test_backtest() -> None:
     assert res.status_code == 200
     body = res.json()
     assert "total_return_pct" in body
+
+
+def test_scanner() -> None:
+    payload = {"universe": "nifty50", "timeframe": "15m", "top_n": 5}
+    res = client.post("/api/v1/scanner/run", json=payload)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["summary"]["scanned"] >= 5
+    assert len(body["results"]) == 5
+
+
+def test_groww_portfolio_sync() -> None:
+    res = client.post("/api/v1/portfolio/groww/sync")
+    assert res.status_code == 200
+    body = res.json()
+    assert "sync" in body
+    assert "analysis" in body

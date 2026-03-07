@@ -97,3 +97,53 @@ export type PortfolioResponse = {
   value_at_risk_95: number;
   recommendations: string[];
 };
+
+export type GrowwPortfolioSyncResponse = {
+  sync: {
+    status: string;
+    source: string;
+    message: string;
+    total_positions: number;
+  };
+  positions: Array<{
+    symbol: string;
+    qty: number;
+    avg_price: number;
+    last_price: number;
+  }>;
+  analysis: PortfolioResponse;
+};
+
+export type StockScanResponse = {
+  universe: string;
+  timeframe: string;
+  generated_at: string;
+  summary: {
+    scanned: number;
+    bullish: number;
+    bearish: number;
+    neutral: number;
+    high_confidence: number;
+  };
+  results: Array<{
+    symbol: string;
+    rank: number;
+    overall_score: number;
+    bias: Bias;
+    action: "buy" | "sell" | "watch";
+    technical: { score: number; signal: Bias; summary: string };
+    breakout: { score: number; signal: Bias; summary: string };
+    fundamental: { score: number; signal: Bias; summary: string };
+    news: { score: number; signal: Bias; summary: string };
+    technical_snapshot: Record<string, number>;
+    intraday_plan: {
+      direction: "long" | "short" | "neutral";
+      setup: string;
+      entry_zone: string;
+      stop_loss: string;
+      targets: string[];
+      invalidation: string;
+      rr_estimate: number;
+    };
+  }>;
+};

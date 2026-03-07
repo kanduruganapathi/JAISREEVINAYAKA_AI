@@ -138,6 +138,32 @@ class MultiAgentOrchestrator:
                     timeframe="15m + 5m",
                 )
             )
+            ideas.append(
+                StrategyIdea(
+                    name="FVG Re-entry CE",
+                    instrument=f"{req.symbol} ITM/ATM CE ({expiry})",
+                    direction="bullish",
+                    setup="Enter only when price retraces into bullish FVG/discount and prints rejection wick.",
+                    entry_trigger="5m displacement candle after retracement into demand/FVG.",
+                    stop_rule="Exit if 5m closes below entry FVG low.",
+                    targets=["Scale at 1R", "Trail balance below 9EMA till structure break"],
+                    confidence=max(0.46, round(score - 0.04, 2)),
+                    timeframe="5m execution, 15m structure",
+                )
+            )
+            ideas.append(
+                StrategyIdea(
+                    name="Expiry Momentum CE + Hedge PE",
+                    instrument=f"Buy ATM CE and tiny OTM PE hedge ({expiry})",
+                    direction="bullish",
+                    setup="For high momentum expiry sessions where reversal spikes are frequent.",
+                    entry_trigger="Only after trend-day confirmation with successive higher lows.",
+                    stop_rule="Kill setup if CE premium loses 28% from entry.",
+                    targets=["Book 60% at 1.5R", "Carry 40% with trailing stop"],
+                    confidence=max(0.44, round(score - 0.06, 2)),
+                    timeframe="5m",
+                )
+            )
         elif consensus == "bearish":
             ideas.append(
                 StrategyIdea(
@@ -168,6 +194,32 @@ class MultiAgentOrchestrator:
                     timeframe="15m + 5m",
                 )
             )
+            ideas.append(
+                StrategyIdea(
+                    name="FVG Re-entry PE",
+                    instrument=f"{req.symbol} ITM/ATM PE ({expiry})",
+                    direction="bearish",
+                    setup="Enter on retrace into bearish FVG/supply followed by rejection close.",
+                    entry_trigger="5m bearish displacement from premium zone/supply.",
+                    stop_rule="Exit if 5m closes above entry FVG high.",
+                    targets=["Scale at 1R", "Trail balance above 9EMA till structure break"],
+                    confidence=max(0.46, round(score - 0.04, 2)),
+                    timeframe="5m execution, 15m structure",
+                )
+            )
+            ideas.append(
+                StrategyIdea(
+                    name="Expiry Momentum PE + Hedge CE",
+                    instrument=f"Buy ATM PE and tiny OTM CE hedge ({expiry})",
+                    direction="bearish",
+                    setup="For heavy sell-off sessions where counter-trend spikes are violent.",
+                    entry_trigger="Only after trend-day confirmation with lower highs sequence.",
+                    stop_rule="Kill setup if PE premium loses 28% from entry.",
+                    targets=["Book 60% at 1.5R", "Carry 40% with trailing stop"],
+                    confidence=max(0.44, round(score - 0.06, 2)),
+                    timeframe="5m",
+                )
+            )
         else:
             ideas.append(
                 StrategyIdea(
@@ -179,6 +231,19 @@ class MultiAgentOrchestrator:
                     stop_rule="Invalidate on opposite ORB break or two-candle failure.",
                     targets=["1R at first impulse", "2R only if trend continuation confirms"],
                     confidence=max(0.4, round(score, 2)),
+                    timeframe="15m + 5m",
+                )
+            )
+            ideas.append(
+                StrategyIdea(
+                    name="Gamma Scalping Watch",
+                    instrument=f"{req.symbol} near-ATM options pair ({expiry})",
+                    direction="neutral",
+                    setup="Stay hedged and deploy only when breakout confirms from compression.",
+                    entry_trigger="No execution until 15m range break with volume surge.",
+                    stop_rule="Flat position if re-entry into range persists for 3 candles.",
+                    targets=["Quick 0.8R to 1.2R objective", "No overnight carry"],
+                    confidence=max(0.38, round(score - 0.05, 2)),
                     timeframe="15m + 5m",
                 )
             )

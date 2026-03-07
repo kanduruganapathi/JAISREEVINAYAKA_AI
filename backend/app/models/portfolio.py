@@ -31,3 +31,16 @@ class PortfolioResponse(BaseModel):
     value_at_risk_95: float
     recommendations: list[str]
     positions: list[PositionMetrics]
+
+
+class GrowwSyncMeta(BaseModel):
+    status: str
+    source: str
+    message: str
+    total_positions: int
+
+
+class GrowwPortfolioSyncResponse(BaseModel):
+    sync: GrowwSyncMeta
+    positions: list[Position]
+    analysis: PortfolioResponse
