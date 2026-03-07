@@ -43,8 +43,13 @@ function fmt(value: number | null | undefined, digits = 2): string {
 }
 
 function biasClass(bias: string): string {
-  if (bias === "bullish" || bias === "long") return "bias-bull";
-  if (bias === "bearish" || bias === "short") return "bias-bear";
+  const normalized = bias.toLowerCase();
+  if (["bullish", "long", "positive", "uptrend"].some((token) => normalized.includes(token))) {
+    return "bias-bull";
+  }
+  if (["bearish", "short", "negative", "downtrend"].some((token) => normalized.includes(token))) {
+    return "bias-bear";
+  }
   return "bias-neutral";
 }
 
@@ -128,6 +133,51 @@ export default function App() {
       score: Number(details.score ?? signal.confidence ?? 0.5),
     };
   }, [analysis]);
+
+  const dashboardKpis = useMemo(
+    () => [
+      {
+        label: "Setup Edge",
+        value: analysis ? `${Math.round(analysis.score * 100)}%` : "--",
+        tone: analysis ? biasClass(analysis.consensus_bias) : "bias-neutral",
+      },
+      {
+        label: "Execution Bias",
+        value: analysis?.trade_plan.action.toUpperCase() ?? "WAIT",
+        tone: analysis ? biasClass(analysis.trade_plan.action) : "bias-neutral",
+      },
+      {
+        label: "Live News",
+        value: `${liveNews.sentiment.toUpperCase()} ${Math.round(liveNews.score * 100)}%`,
+        tone: biasClass(liveNews.sentiment),
+      },
+      {
+        label: "Scanner HC",
+        value: scanner ? `${scanner.summary.high_confidence}/${scanner.summary.scanned}` : "--",
+        tone: scanner
+          ? scanner.summary.bullish >= scanner.summary.bearish
+            ? "bias-bull"
+            : "bias-bear"
+          : "bias-neutral",
+      },
+      {
+        label: "Portfolio Risk",
+        value: portfolio ? `${fmt(portfolio.concentration_risk_pct)}%` : "--",
+        tone:
+          portfolio && portfolio.concentration_risk_pct > 45
+            ? "bias-bear"
+            : portfolio
+              ? "bias-neutral"
+              : "bias-neutral",
+      },
+      {
+        label: "Runtime",
+        value: `${segment.replace(/_/g, " ")} • ${timeframe}`,
+        tone: "bias-neutral",
+      },
+    ],
+    [analysis, liveNews, portfolio, scanner, segment, timeframe]
+  );
 
   const refreshHealth = async () => {
     try {
@@ -855,43 +905,103 @@ export default function App() {
   );
 
   return (
-    <div className="terminal-bg">
-      <div className="glow g1" />
-      <div className="glow g2" />
+    <div className="pro-app">
+      <div className="orb orb-a" />
+      <div className="orb orb-b" />
 
-      <div className="layout">
-        <aside className="sidebar">
-          <div className="brand">
-            <h1>Vyoma Trade AI</h1>
-            <p>Institutional-style Workflow for Indian Markets</p>
-          </div>
+      <header className="masthead">
+        <div className="masthead-left">
+          <p className="eyebrow">Institutional Trading Workspace</p>
+          <h1>Vyoma Trade Terminal</h1>
+        </div>
+        <div className="masthead-right">
+          <span className="status-chip">API {health}</span>
+          <span className="status-chip">Mode {mode.toUpperCase()}</span>
+          <span className="status-chip">Symbol {symbol}</span>
+          <button onClick={refreshHealth} type="button">
+            Refresh Status
+          </button>
+        </div>
+      </header>
 
+      <section className="command-deck">
+        <form className="analysis-form" onSubmit={runAnalysis}>
+          <label>
+            Symbol
+            <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
+              <option value="NIFTY">NIFTY</option>
+              <option value="BANKNIFTY">BANKNIFTY</option>
+              <option value="SENSEX">SENSEX</option>
+              <option value="RELIANCE">RELIANCE</option>
+              <option value="TCS">TCS</option>
+              <option value="HDFCBANK">HDFCBANK</option>
+              <option value="ICICIBANK">ICICIBANK</option>
+            </select>
+          </label>
+          <label>
+            Segment
+            <select value={segment} onChange={(e) => setSegment(e.target.value)}>
+              <option value="intraday_options">Intraday Index Options</option>
+              <option value="stock_options">Stock Options</option>
+              <option value="equity">Equity</option>
+              <option value="swing_stock">Swing Stock</option>
+            </select>
+          </label>
+          <label>
+            Timeframe
+            <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>
+              <option value="5m">5m</option>
+              <option value="15m">15m</option>
+              <option value="1h">1h</option>
+              <option value="1d">1d</option>
+            </select>
+          </label>
+          <label className="check-inline">
+            <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+            Alerts
+          </label>
+          <button type="submit" disabled={loading}>
+            {loading ? "Analyzing..." : "Run Analysis"}
+          </button>
+        </form>
+        <div className="action-pills">
+          <button type="button" onClick={runScanner} disabled={loading}>
+            Nifty50 Scan
+          </button>
+          <button type="button" onClick={syncGrowwPortfolio} disabled={loading}>
+            Sync Groww
+          </button>
+          <button type="button" onClick={() => setView("dashboard")}>
+            Open Dashboard
+          </button>
+        </div>
+      </section>
+
+      <section className="market-strip">
+        {dashboardKpis.map((kpi) => (
+          <article key={kpi.label} className={`kpi-tile ${kpi.tone}`}>
+            <p>{kpi.label}</p>
+            <strong>{kpi.value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <div className="content-layout">
+        <aside className="navigation-rail">
           <nav className="nav-list">
-            {VIEW_ITEMS.map((item) => (
+            {VIEW_ITEMS.map((item, idx) => (
               <button
                 key={item.key}
                 className={`nav-item ${view === item.key ? "current" : ""}`}
                 onClick={() => setView(item.key)}
                 type="button"
               >
+                <em>{String(idx + 1).padStart(2, "0")}</em>
                 <strong>{item.label}</strong>
                 <span>{item.hint}</span>
               </button>
             ))}
           </nav>
-
-          <div className="side-card">
-            <h4>Quick Actions</h4>
-            <button onClick={refreshHealth} type="button">
-              Check API
-            </button>
-            <button onClick={runScanner} type="button" disabled={loading}>
-              Run Nifty50 Scan
-            </button>
-            <p className="status-line">API: {health}</p>
-            <p className="status-line">Mode: {mode.toUpperCase()}</p>
-            <p className="status-line">Focus: {symbol}</p>
-          </div>
         </aside>
 
         <main className="workspace">
@@ -900,41 +1010,11 @@ export default function App() {
               <h2>{VIEW_ITEMS.find((x) => x.key === view)?.label}</h2>
               <p>{VIEW_ITEMS.find((x) => x.key === view)?.hint}</p>
             </div>
-
-            <form className="quick-form" onSubmit={runAnalysis}>
-              <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
-                <option value="NIFTY">NIFTY</option>
-                <option value="BANKNIFTY">BANKNIFTY</option>
-                <option value="SENSEX">SENSEX</option>
-                <option value="RELIANCE">RELIANCE</option>
-                <option value="TCS">TCS</option>
-                <option value="HDFCBANK">HDFCBANK</option>
-                <option value="ICICIBANK">ICICIBANK</option>
-              </select>
-
-              <select value={segment} onChange={(e) => setSegment(e.target.value)}>
-                <option value="intraday_options">Intraday Index Options</option>
-                <option value="stock_options">Stock Options</option>
-                <option value="equity">Equity</option>
-                <option value="swing_stock">Swing Stock</option>
-              </select>
-
-              <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>
-                <option value="5m">5m</option>
-                <option value="15m">15m</option>
-                <option value="1h">1h</option>
-                <option value="1d">1d</option>
-              </select>
-
-              <label className="check-inline">
-                <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
-                Alerts
-              </label>
-
-              <button type="submit" disabled={loading}>
-                {loading ? "Analyzing..." : "Run Analysis"}
-              </button>
-            </form>
+            <div className="workspace-head-stats">
+              <span>Symbol: {symbol}</span>
+              <span>Segment: {segment.replace(/_/g, " ")}</span>
+              <span>Timeframe: {timeframe}</span>
+            </div>
           </header>
 
           <section className="workspace-grid">
