@@ -608,6 +608,82 @@ export default function App() {
     };
   }, [analysis, liveNews]);
 
+  const actionableSignal = useMemo(() => {
+    if (!analysis) return null;
+
+    const hasLevels =
+      analysis.trade_plan.entry !== null &&
+      analysis.trade_plan.stop_loss !== null &&
+      analysis.trade_plan.target !== null;
+    const alignedTimeframes = analysis.timeframe_biases.filter(
+      (tf) => tf.bias === analysis.consensus_bias
+    ).length;
+    const minAligned = Math.max(2, Math.ceil(analysis.timeframe_biases.length / 2));
+    const latestSweep = analysis.market_structure?.liquidity_sweeps?.[analysis.market_structure.liquidity_sweeps.length - 1];
+    const sweepType =
+      latestSweep && typeof latestSweep.type === "string"
+        ? latestSweep.type.replace(/_/g, " ")
+        : "none";
+
+    const directionalAction = analysis.trade_plan.action;
+    const decision = tradeQualification?.decision ?? "AVOID";
+    const rr = analysis.risk.risk_reward_ratio;
+    const ready =
+      directionalAction !== "hold" &&
+      hasLevels &&
+      rr >= 1.5 &&
+      alignedTimeframes >= minAligned &&
+      decision !== "AVOID";
+
+    let actionLabel = "WAIT / NO TRADE";
+    let tone = "bias-neutral";
+    if (ready && directionalAction === "buy") {
+      actionLabel = "EXECUTE LONG";
+      tone = "bias-bull";
+    } else if (ready && directionalAction === "sell") {
+      actionLabel = "EXECUTE SHORT";
+      tone = "bias-bear";
+    }
+
+    const entry = fmt(analysis.trade_plan.entry);
+    const stop = fmt(analysis.trade_plan.stop_loss);
+    const target = fmt(analysis.trade_plan.target);
+    const suggestedQtyText = suggestedQty > 0 ? `${suggestedQty}` : "as per risk";
+
+    const steps =
+      directionalAction === "buy"
+        ? [
+            `Wait for ${timeframe} confirmation above entry zone ${entry}.`,
+            `Place BUY with qty ${suggestedQtyText}.`,
+            `Set stop-loss at ${stop} and hard invalidate if candle closes below stop zone.`,
+            `Book partial near 1R and trail balance toward target ${target}.`,
+          ]
+        : directionalAction === "sell"
+          ? [
+              `Wait for ${timeframe} confirmation below entry zone ${entry}.`,
+              `Place SELL with qty ${suggestedQtyText}.`,
+              `Set stop-loss at ${stop} and invalidate if candle closes above stop zone.`,
+              `Book partial near 1R and trail balance toward target ${target}.`,
+            ]
+          : [
+              "No clean directional edge. Stay in watch mode.",
+              "Wait for breakout with candle close + retest confirmation.",
+              "Re-run analysis before placing any order.",
+            ];
+
+    return {
+      actionLabel,
+      tone,
+      ready,
+      hasLevels,
+      alignedTimeframes,
+      minAligned,
+      sweepType,
+      rr,
+      steps,
+    };
+  }, [analysis, tradeQualification, suggestedQty, timeframe]);
+
   const backtestQuality = useMemo(() => {
     if (!backtest) return null;
     return evaluateBacktestQuality(backtest);
@@ -1100,6 +1176,68 @@ export default function App() {
               disabled={!suggestedQty}
             >
               Use Suggested Qty in Execution
+            </button>
+          </div>
+        </section>
+
+        <section className="panel panel-wide">
+          <div className="panel-topline">
+            <h3>Trading Signals to Perform</h3>
+            <span className={`grade-chip signal-status ${actionableSignal?.tone ?? "bias-neutral"}`}>
+              {actionableSignal?.actionLabel ?? "WAIT / NO TRADE"}
+            </span>
+          </div>
+          <div className="signal-board">
+            <article className="signal-card">
+              <label>Signal Readiness</label>
+              <strong>{actionableSignal?.ready ? "READY" : "WAIT"}</strong>
+              <span className="muted">
+                Alignment {actionableSignal?.alignedTimeframes ?? 0}/{actionableSignal?.minAligned ?? 0}
+              </span>
+            </article>
+            <article className="signal-card">
+              <label>Price Levels</label>
+              <strong>
+                {fmt(analysis.trade_plan.entry)} / {fmt(analysis.trade_plan.stop_loss)} / {fmt(analysis.trade_plan.target)}
+              </strong>
+              <span className="muted">Entry / Stop / Target</span>
+            </article>
+            <article className="signal-card">
+              <label>Risk-Reward</label>
+              <strong>{fmt(actionableSignal?.rr)}</strong>
+              <span className="muted">Minimum expected: 1.50</span>
+            </article>
+            <article className="signal-card">
+              <label>SMC Trigger</label>
+              <strong>{actionableSignal?.sweepType?.toUpperCase() ?? "NONE"}</strong>
+              <span className="muted">
+                BOS: {structure?.bos ?? "-"} • CHOCH: {structure?.choch ?? "-"}
+              </span>
+            </article>
+          </div>
+          <ol className="signal-steps">
+            {actionableSignal?.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <div className="quick-actions">
+            <button
+              type="button"
+              onClick={() => {
+                if (suggestedQty > 0) setQty(suggestedQty);
+                setMode("paper");
+                setView("execution");
+              }}
+              disabled={!actionableSignal?.ready}
+            >
+              Open Execution with This Signal
+            </button>
+            <button
+              type="button"
+              onClick={() => runBacktest()}
+              disabled={loading}
+            >
+              Revalidate Signal via Backtest
             </button>
           </div>
         </section>
