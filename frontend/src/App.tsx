@@ -187,6 +187,10 @@ export default function App() {
   const [quickTradeQty, setQuickTradeQty] = useState(25);
   const [scanBacktests, setScanBacktests] = useState<Record<string, BacktestResponse>>({});
   const [paperTradeLogs, setPaperTradeLogs] = useState<PaperTradeLog[]>([]);
+  const [scannerTimeframe, setScannerTimeframe] = useState("15m");
+  const [scannerTopN, setScannerTopN] = useState(15);
+  const [riskPerTradePct, setRiskPerTradePct] = useState(1);
+  const [dailyLossLimitPct, setDailyLossLimitPct] = useState(2);
 
   const [mode, setMode] = useState<"paper" | "live">("paper");
   const [qty, setQty] = useState(25);
@@ -294,6 +298,53 @@ export default function App() {
     return scanner.results.find((x) => x.symbol === selectedScanSymbol) ?? null;
   }, [scanner, selectedScanSymbol]);
 
+  const suggestedQty = useMemo(() => {
+    if (analysis?.trade_plan.entry == null || analysis.trade_plan.stop_loss == null) return 0;
+    const stopDistance = Math.abs(analysis.trade_plan.entry - analysis.trade_plan.stop_loss);
+    if (stopDistance <= 0) return 0;
+    const riskCapital = capital * (riskPerTradePct / 100);
+    return Math.max(1, Math.floor(riskCapital / stopDistance));
+  }, [analysis, capital, riskPerTradePct]);
+
+  const tradeQualification = useMemo(() => {
+    if (!analysis) return null;
+    const rr = analysis.risk.risk_reward_ratio;
+    const alignedTimeframes = analysis.timeframe_biases.filter(
+      (tf) => tf.bias === analysis.consensus_bias
+    ).length;
+    const hasPlanLevels =
+      analysis.trade_plan.entry !== null &&
+      analysis.trade_plan.stop_loss !== null &&
+      analysis.trade_plan.target !== null;
+    const newsAligned =
+      liveNews.sentiment === "neutral" ||
+      (liveNews.sentiment.toLowerCase().includes("positive") && analysis.consensus_bias === "bullish") ||
+      (liveNews.sentiment.toLowerCase().includes("negative") && analysis.consensus_bias === "bearish");
+
+    const checks = [
+      { name: "System Score", pass: analysis.score >= 0.65, note: `${Math.round(analysis.score * 100)}%` },
+      { name: "Risk Reward", pass: rr >= 1.8, note: fmt(rr) },
+      {
+        name: "Multi-Timeframe Alignment",
+        pass: alignedTimeframes >= 3,
+        note: `${alignedTimeframes}/${analysis.timeframe_biases.length}`,
+      },
+      { name: "News Alignment", pass: newsAligned, note: liveNews.sentiment.toUpperCase() },
+      { name: "Entry Plan Completeness", pass: hasPlanLevels, note: hasPlanLevels ? "Complete" : "Missing levels" },
+    ];
+
+    const passed = checks.filter((x) => x.pass).length;
+    const ratio = passed / checks.length;
+    const decision = ratio >= 0.8 ? "TRADE READY" : ratio >= 0.6 ? "WATCHLIST" : "AVOID";
+    return {
+      checks,
+      passed,
+      total: checks.length,
+      ratio,
+      decision,
+    };
+  }, [analysis, liveNews]);
+
   useEffect(() => {
     if (!scanner?.results.length) return;
     if (!selectedScanSymbol || !scanner.results.some((x) => x.symbol === selectedScanSymbol)) {
@@ -349,8 +400,8 @@ export default function App() {
     try {
       const result = (await api.runScanner({
         universe: "nifty50",
-        timeframe: "15m",
-        top_n: 15,
+        timeframe: scannerTimeframe,
+        top_n: scannerTopN,
         include_news: true,
         include_fundamental: true,
         include_breakout: true,
@@ -635,6 +686,82 @@ export default function App() {
           <p className="muted">{analysis.trade_plan.rationale}</p>
         </section>
 
+        <section className="panel panel-wide">
+          <div className="panel-topline">
+            <h3>Trade Qualification Engine</h3>
+            <span
+              className={`grade-chip ${
+                tradeQualification?.decision === "TRADE READY"
+                  ? "bias-bull"
+                  : tradeQualification?.decision === "WATCHLIST"
+                    ? "bias-neutral"
+                    : "bias-bear"
+              }`}
+            >
+              {tradeQualification?.decision ?? "NO SIGNAL"}
+            </span>
+          </div>
+          <div className="quality-grid">
+            {tradeQualification?.checks.map((check) => (
+              <article key={check.name} className={`quality-item ${check.pass ? "pass" : "fail"}`}>
+                <strong>{check.name}</strong>
+                <span>{check.note}</span>
+              </article>
+            ))}
+          </div>
+          <div className="headline-grid">
+            <article>
+              <label>Checks Passed</label>
+              <p className="big">
+                {tradeQualification?.passed}/{tradeQualification?.total}
+              </p>
+            </article>
+            <article>
+              <label>Risk Per Trade</label>
+              <p className="big">{fmt(riskPerTradePct)}%</p>
+            </article>
+            <article>
+              <label>Daily Loss Limit</label>
+              <p className="big">{fmt(dailyLossLimitPct)}%</p>
+            </article>
+            <article>
+              <label>Suggested Qty</label>
+              <p className="big">{suggestedQty || "-"}</p>
+            </article>
+          </div>
+          <div className="controls-grid">
+            <label>
+              Risk Per Trade (%)
+              <input
+                type="number"
+                min={0.25}
+                max={3}
+                step={0.25}
+                value={riskPerTradePct}
+                onChange={(e) => setRiskPerTradePct(Math.max(0.25, Math.min(3, Number(e.target.value || 1))))}
+              />
+            </label>
+            <label>
+              Daily Loss Limit (%)
+              <input
+                type="number"
+                min={1}
+                max={8}
+                step={0.5}
+                value={dailyLossLimitPct}
+                onChange={(e) => setDailyLossLimitPct(Math.max(1, Math.min(8, Number(e.target.value || 2))))}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setQty(suggestedQty || qty)}
+              disabled={!suggestedQty}
+            >
+              Use Suggested Qty in Execution
+            </button>
+          </div>
+        </section>
+
         <section className="panel">
           <h3>Indicator Snapshot</h3>
           <div className="kv-grid">
@@ -785,6 +912,27 @@ export default function App() {
                 One-click scan for breakout candidates combining news flow, fundamentals, technical structure and intraday setup.
               </p>
             </div>
+          </div>
+          <div className="controls-grid">
+            <label>
+              Scanner Timeframe
+              <select value={scannerTimeframe} onChange={(e) => setScannerTimeframe(e.target.value)}>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="1d">1d</option>
+              </select>
+            </label>
+            <label>
+              Top Opportunities
+              <input
+                type="number"
+                min={5}
+                max={50}
+                value={scannerTopN}
+                onChange={(e) => setScannerTopN(Math.max(5, Math.min(50, Number(e.target.value || 15))))}
+              />
+            </label>
             <button onClick={runScanner} disabled={loading}>
               {loading ? "Scanning..." : "Run Nifty 50 Scan"}
             </button>
@@ -1370,6 +1518,9 @@ export default function App() {
     <>
       <section className="panel panel-wide">
         <h2>Execution Console</h2>
+        <p className="muted">
+          Suggested quantity from risk model: {suggestedQty || "-"} (risk {fmt(riskPerTradePct)}% per trade, daily stop {fmt(dailyLossLimitPct)}%).
+        </p>
         <div className="controls-grid">
           <div className="toggle-row">
             <button className={mode === "paper" ? "active" : ""} onClick={() => setMode("paper")} type="button">
@@ -1387,6 +1538,9 @@ export default function App() {
             Planned Side
             <input value={analysis?.trade_plan.action.toUpperCase() ?? "BUY"} readOnly />
           </label>
+          <button type="button" onClick={() => setQty(suggestedQty || qty)} disabled={!suggestedQty}>
+            Apply Suggested Qty
+          </button>
           <button onClick={() => placeOrder()} disabled={loading}>
             Place Order
           </button>
@@ -1421,8 +1575,8 @@ export default function App() {
 
       <header className="masthead">
         <div className="masthead-left">
-          <p className="eyebrow">Institutional Trading Workspace</p>
-          <h1>Vyoma Trade Terminal</h1>
+          <p className="eyebrow">AI-Powered Trading Workspace</p>
+          <h1>AI TRADE</h1>
         </div>
         <div className="masthead-right">
           <span className="status-chip">API {health}</span>
