@@ -76,6 +76,10 @@ export type BacktestResponse = {
   win_rate_pct: number;
   max_drawdown_pct: number;
   sharpe: number;
+  equity_curve: Array<{
+    ts: string;
+    equity: number;
+  }>;
   trades: Array<{
     entry_ts: string;
     exit_ts: string;
@@ -86,6 +90,14 @@ export type BacktestResponse = {
     pnl: number;
     pnl_pct: number;
   }>;
+};
+
+export type OrderResponse = {
+  status: "accepted" | "rejected" | "simulated";
+  order_id: string;
+  mode: string;
+  message: string;
+  broker_payload?: Record<string, unknown>;
 };
 
 export type PortfolioResponse = {

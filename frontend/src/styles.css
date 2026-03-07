@@ -627,6 +627,27 @@ input:focus {
   gap: 0.34rem;
 }
 
+.card-actions {
+  margin-top: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(90px, 1fr));
+  gap: 0.35rem;
+}
+
+.card-actions button {
+  border-radius: 9px;
+  border: 1px solid rgba(123, 172, 232, 0.44);
+  background: rgba(10, 20, 33, 0.72);
+  color: var(--text-soft);
+  padding: 0.38rem 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.card-actions button:hover {
+  border-color: rgba(130, 194, 255, 0.75);
+}
+
 .controls-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(190px, 1fr));
@@ -655,6 +676,59 @@ input:focus {
   border-color: rgba(122, 192, 255, 0.66);
   font-weight: 700;
   cursor: pointer;
+}
+
+.strategy-builder-grid {
+  grid-template-columns: repeat(3, minmax(190px, 1fr));
+}
+
+.param-grid {
+  margin-top: 0.4rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.48rem;
+}
+
+.param-grid label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  display: grid;
+  gap: 0.24rem;
+}
+
+.param-grid input {
+  border-radius: 9px;
+  border: 1px solid rgba(132, 172, 224, 0.34);
+  background: rgba(8, 16, 29, 0.68);
+  padding: 0.44rem 0.52rem;
+}
+
+.quick-actions {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.quick-actions button {
+  border-radius: 10px;
+  border: 1px solid rgba(123, 191, 255, 0.56);
+  background: linear-gradient(130deg, rgba(59, 156, 255, 0.94) 0%, rgba(41, 111, 255, 0.92) 100%);
+  color: #eaf5ff;
+  padding: 0.45rem 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quick-actions button:nth-child(2),
+.quick-actions button:nth-child(3) {
+  background: rgba(11, 22, 37, 0.8);
+  border-color: rgba(141, 182, 236, 0.5);
+  color: var(--text-soft);
+}
+
+.quick-actions button:nth-child(4) {
+  background: rgba(24, 43, 68, 0.8);
 }
 
 textarea {
@@ -714,6 +788,16 @@ th {
 
 tbody tr:nth-child(2n) {
   background: rgba(21, 38, 61, 0.4);
+}
+
+.table-btn {
+  border-radius: 8px;
+  border: 1px solid rgba(131, 193, 255, 0.5);
+  background: rgba(23, 41, 65, 0.84);
+  color: var(--text-soft);
+  padding: 0.22rem 0.48rem;
+  font-size: 0.68rem;
+  cursor: pointer;
 }
 
 .checklist {
@@ -831,6 +915,8 @@ button:disabled {
   .headline-grid,
   .kv-grid,
   .controls-grid,
+  .strategy-builder-grid,
+  .param-grid,
   .market-strip {
     grid-template-columns: 1fr;
   }
@@ -865,5 +951,17 @@ button:disabled {
   .panel-topline {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-actions {
+    width: 100%;
+  }
+
+  .quick-actions button {
+    width: 100%;
   }
 }

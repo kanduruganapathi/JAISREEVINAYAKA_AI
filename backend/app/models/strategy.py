@@ -19,6 +19,8 @@ class BacktestRequest(BaseModel):
     symbol: str
     segment: str = "equity"
     candles: list[Candle]
+    timeframe: str = "15m"
+    lookback_candles: int = Field(default=380, ge=120, le=2000)
     initial_capital: float = 100000.0
     commission_per_trade: float = 20.0
     slippage_bps: float = 5.0

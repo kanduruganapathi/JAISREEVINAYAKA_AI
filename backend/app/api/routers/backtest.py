@@ -12,5 +12,7 @@ data = DataProvider()
 @router.post("/backtest/run", response_model=BacktestResponse)
 def run_backtest(req: BacktestRequest) -> BacktestResponse:
     if not req.candles:
-        req.candles = data.get_candles(req.symbol, "15m", 380)
+        timeframe = req.timeframe or "15m"
+        lookback = max(120, min(req.lookback_candles, 2000))
+        req.candles = data.get_candles(req.symbol, timeframe, lookback)
     return service.run(req)

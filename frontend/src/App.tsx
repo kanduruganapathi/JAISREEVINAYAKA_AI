@@ -1,10 +1,11 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { api } from "./api/client";
 import {
   AnalysisResponse,
   BacktestResponse,
   GrowwPortfolioSyncResponse,
+  OrderResponse,
   PortfolioResponse,
   StockScanResponse,
 } from "./types";
@@ -27,6 +28,91 @@ const VIEW_ITEMS: Array<{ key: ViewKey; label: string; hint: string }> = [
   { key: "execution", label: "Execution", hint: "Paper/live order controls" },
   { key: "chat", label: "Market Intel", hint: "Scenario Q&A and market intelligence" },
 ];
+
+type StrategyName = "smc_breakout" | "ema_cross" | "rsi_reversion" | "multi_timeframe_breakout";
+type StrategyParamMap = Record<string, number>;
+
+type StrategyTemplate = {
+  label: string;
+  description: string;
+  params: Array<{ key: string; label: string; min: number; max: number; step: number }>;
+  defaults: StrategyParamMap;
+};
+
+const STRATEGY_TEMPLATES: Record<StrategyName, StrategyTemplate> = {
+  smc_breakout: {
+    label: "SMC Breakout",
+    description: "BOS/CHOCH structure with displacement and RSI filter.",
+    params: [
+      { key: "bull_rsi_min", label: "Bull RSI Min", min: 20, max: 80, step: 1 },
+      { key: "bear_rsi_max", label: "Bear RSI Max", min: 20, max: 80, step: 1 },
+      { key: "require_displacement", label: "Require Displacement (1/0)", min: 0, max: 1, step: 1 },
+      { key: "min_histogram_strength", label: "Min Histogram", min: 0, max: 2, step: 0.01 },
+    ],
+    defaults: {
+      bull_rsi_min: 48,
+      bear_rsi_max: 52,
+      require_displacement: 1,
+      min_histogram_strength: 0.01,
+    },
+  },
+  ema_cross: {
+    label: "EMA Cross",
+    description: "Trend-following cross with gap and price confirmation.",
+    params: [
+      { key: "fast_ema", label: "Fast EMA", min: 5, max: 120, step: 1 },
+      { key: "slow_ema", label: "Slow EMA", min: 10, max: 240, step: 1 },
+      { key: "confirm_price_above_ema", label: "Price Confirm (1/0)", min: 0, max: 1, step: 1 },
+      { key: "trend_gap_bps", label: "Trend Gap (bps)", min: 0, max: 200, step: 1 },
+    ],
+    defaults: {
+      fast_ema: 20,
+      slow_ema: 50,
+      confirm_price_above_ema: 1,
+      trend_gap_bps: 6,
+    },
+  },
+  rsi_reversion: {
+    label: "RSI Reversion",
+    description: "Mean-reversion entries with neutral zone filter.",
+    params: [
+      { key: "oversold", label: "Oversold", min: 5, max: 50, step: 1 },
+      { key: "overbought", label: "Overbought", min: 50, max: 95, step: 1 },
+      { key: "exit_rsi", label: "Exit RSI", min: 20, max: 80, step: 1 },
+      { key: "neutral_band", label: "Neutral Band", min: 1, max: 15, step: 0.5 },
+    ],
+    defaults: {
+      oversold: 30,
+      overbought: 70,
+      exit_rsi: 50,
+      neutral_band: 4,
+    },
+  },
+  multi_timeframe_breakout: {
+    label: "MTF Breakout",
+    description: "Range breakout with configurable lookback and buffer.",
+    params: [
+      { key: "breakout_lookback", label: "Lookback Candles", min: 10, max: 120, step: 1 },
+      { key: "breakout_buffer_bps", label: "Buffer (bps)", min: 0, max: 60, step: 1 },
+    ],
+    defaults: {
+      breakout_lookback: 20,
+      breakout_buffer_bps: 5,
+    },
+  },
+};
+
+const STRATEGY_ORDER: StrategyName[] = ["smc_breakout", "ema_cross", "rsi_reversion", "multi_timeframe_breakout"];
+
+type PaperTradeLog = {
+  ts: string;
+  symbol: string;
+  side: "buy" | "sell";
+  qty: number;
+  status: string;
+  orderId: string;
+  message: string;
+};
 
 const defaultPositions = JSON.stringify(
   [
@@ -61,6 +147,19 @@ function scoreBand(score: number): string {
   return "D";
 }
 
+function defaultStrategyParams(rule: StrategyName): StrategyParamMap {
+  return { ...STRATEGY_TEMPLATES[rule].defaults };
+}
+
+function recommendedStrategyForPick(
+  item: StockScanResponse["results"][number]
+): StrategyName {
+  if (item.breakout.score >= 0.72) return "multi_timeframe_breakout";
+  if (item.technical.score >= 0.65) return "ema_cross";
+  if (item.bias === "neutral") return "rsi_reversion";
+  return "smc_breakout";
+}
+
 export default function App() {
   const [view, setView] = useState<ViewKey>("dashboard");
   const [health, setHealth] = useState("unknown");
@@ -76,9 +175,18 @@ export default function App() {
   const [scanner, setScanner] = useState<StockScanResponse | null>(null);
   const [growwSync, setGrowwSync] = useState<GrowwPortfolioSyncResponse | null>(null);
 
-  const [strategy, setStrategy] = useState("smc_breakout");
+  const [strategy, setStrategy] = useState<StrategyName>("smc_breakout");
+  const [strategyParams, setStrategyParams] = useState<StrategyParamMap>(() =>
+    defaultStrategyParams("smc_breakout")
+  );
+  const [backtestTimeframe, setBacktestTimeframe] = useState("15m");
+  const [backtestLookback, setBacktestLookback] = useState(380);
   const [capital, setCapital] = useState(100000);
   const [positionsText, setPositionsText] = useState(defaultPositions);
+  const [selectedScanSymbol, setSelectedScanSymbol] = useState("");
+  const [quickTradeQty, setQuickTradeQty] = useState(25);
+  const [scanBacktests, setScanBacktests] = useState<Record<string, BacktestResponse>>({});
+  const [paperTradeLogs, setPaperTradeLogs] = useState<PaperTradeLog[]>([]);
 
   const [mode, setMode] = useState<"paper" | "live">("paper");
   const [qty, setQty] = useState(25);
@@ -179,6 +287,20 @@ export default function App() {
     [analysis, liveNews, portfolio, scanner, segment, timeframe]
   );
 
+  const strategyTemplate = STRATEGY_TEMPLATES[strategy];
+
+  const selectedScanItem = useMemo(() => {
+    if (!scanner || !selectedScanSymbol) return null;
+    return scanner.results.find((x) => x.symbol === selectedScanSymbol) ?? null;
+  }, [scanner, selectedScanSymbol]);
+
+  useEffect(() => {
+    if (!scanner?.results.length) return;
+    if (!selectedScanSymbol || !scanner.results.some((x) => x.symbol === selectedScanSymbol)) {
+      setSelectedScanSymbol(scanner.results[0].symbol);
+    }
+  }, [scanner, selectedScanSymbol]);
+
   const refreshHealth = async () => {
     try {
       const h = await api.health();
@@ -243,23 +365,56 @@ export default function App() {
     }
   };
 
-  const runBacktest = async () => {
+  const setStrategyRule = (nextRule: StrategyName) => {
+    setStrategy(nextRule);
+    setStrategyParams(defaultStrategyParams(nextRule));
+  };
+
+  const updateStrategyParam = (key: string, value: number) => {
+    setStrategyParams((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const runBacktest = async (opts?: {
+    symbol?: string;
+    segment?: string;
+    ruleName?: StrategyName;
+    params?: StrategyParamMap;
+    keepScannerView?: boolean;
+  }) => {
+    const targetSymbol = opts?.symbol ?? symbol;
+    const targetSegment = opts?.segment ?? segment;
+    const ruleName = opts?.ruleName ?? strategy;
+    const params = opts?.params ?? strategyParams;
+
     setError("");
     setLoading(true);
     try {
       const result = (await api.runBacktest({
-        symbol,
-        segment,
+        symbol: targetSymbol,
+        segment: targetSegment,
         candles: [],
+        timeframe: backtestTimeframe,
+        lookback_candles: backtestLookback,
         initial_capital: capital,
         commission_per_trade: 20,
         slippage_bps: 5,
-        rule: { name: strategy, params: {} },
+        rule: { name: ruleName, params },
       })) as BacktestResponse;
       setBacktest(result);
-      setView("strategy");
+      setScanBacktests((prev) => ({
+        ...prev,
+        [targetSymbol]: result,
+      }));
+      if (!opts?.keepScannerView) {
+        setView("strategy");
+      }
+      return result;
     } catch (err) {
       setError(String(err));
+      return null;
     } finally {
       setLoading(false);
     }
@@ -297,26 +452,109 @@ export default function App() {
     }
   };
 
-  const placeOrder = async () => {
+  const placeOrder = async (opts?: {
+    symbol?: string;
+    side?: "buy" | "sell";
+    mode?: "paper" | "live";
+    segment?: "equity" | "index_option" | "stock_option";
+    qty?: number;
+    keepScannerView?: boolean;
+  }) => {
+    const targetSymbol = opts?.symbol ?? symbol;
+    const targetMode = opts?.mode ?? mode;
+    const targetSide = opts?.side ?? (analysis?.trade_plan.action === "sell" ? "sell" : "buy");
+    const targetQty = opts?.qty ?? qty;
+    const targetSegment =
+      opts?.segment ??
+      (segment.includes("option")
+        ? (segment.includes("stock") ? "stock_option" : "index_option")
+        : "equity");
+
     setError("");
     setLoading(true);
     try {
       const result = (await api.placeOrder({
-        symbol,
-        segment: segment.includes("option") ? "index_option" : "equity",
-        side: analysis?.trade_plan.action === "sell" ? "sell" : "buy",
-        qty,
+        symbol: targetSymbol,
+        segment: targetSegment,
+        side: targetSide,
+        qty: targetQty,
         order_type: "market",
         product_type: "intraday",
-        mode,
-      })) as { status: string; order_id: string; message: string };
+        mode: targetMode,
+      })) as OrderResponse;
       setOrderMsg(`${result.status.toUpperCase()} | ${result.order_id} | ${result.message}`);
-      setView("execution");
+      if (targetMode === "paper") {
+        setPaperTradeLogs((prev) => [
+          {
+            ts: new Date().toISOString(),
+            symbol: targetSymbol,
+            side: targetSide,
+            qty: targetQty,
+            status: result.status,
+            orderId: result.order_id,
+            message: result.message,
+          },
+          ...prev,
+        ]);
+      }
+      if (!opts?.keepScannerView) {
+        setView("execution");
+      }
+      return result;
     } catch (err) {
       setError(String(err));
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  const runScannerBacktest = async (item: StockScanResponse["results"][number]) => {
+    const recommendedRule = recommendedStrategyForPick(item);
+    const recommendedParams = defaultStrategyParams(recommendedRule);
+    setSymbol(item.symbol);
+    setSegment("equity");
+    setStrategyRule(recommendedRule);
+    setSelectedScanSymbol(item.symbol);
+    await runBacktest({
+      symbol: item.symbol,
+      segment: "equity",
+      ruleName: recommendedRule,
+      params: recommendedParams,
+      keepScannerView: true,
+    });
+  };
+
+  const runScannerPaperTrade = async (
+    item: StockScanResponse["results"][number],
+    forcedSide?: "buy" | "sell"
+  ) => {
+    if (!forcedSide && item.action === "watch" && item.bias === "neutral") {
+      setError(`No directional edge for ${item.symbol}. Run fresh scan or wait for breakout confirmation.`);
+      return;
+    }
+    const side =
+      forcedSide ??
+      (item.action === "buy"
+        ? "buy"
+        : item.action === "sell"
+          ? "sell"
+          : item.bias === "bullish"
+            ? "buy"
+            : "sell");
+    setSymbol(item.symbol);
+    setSegment("equity");
+    setMode("paper");
+    setQty(quickTradeQty);
+    setSelectedScanSymbol(item.symbol);
+    await placeOrder({
+      symbol: item.symbol,
+      side,
+      qty: quickTradeQty,
+      mode: "paper",
+      segment: "equity",
+      keepScannerView: true,
+    });
   };
 
   const askChat = async () => {
@@ -535,6 +773,8 @@ export default function App() {
   };
 
   const renderScanner = () => {
+    const selectedBacktest = selectedScanSymbol ? scanBacktests[selectedScanSymbol] : null;
+
     return (
       <>
         <section className="panel panel-wide">
@@ -576,6 +816,156 @@ export default function App() {
             </section>
 
             <section className="panel panel-wide">
+              <h3>Scan to Strategy and Paper Trade</h3>
+              <p className="muted">
+                Pick a scanned stock, tune rule parameters, run backtest, then place paper trade instantly.
+              </p>
+              <div className="controls-grid strategy-builder-grid">
+                <label>
+                  Selected Scan Pick
+                  <select value={selectedScanSymbol} onChange={(e) => setSelectedScanSymbol(e.target.value)}>
+                    {scanner.results.map((item) => (
+                      <option key={item.symbol} value={item.symbol}>
+                        #{item.rank} {item.symbol} ({Math.round(item.overall_score * 100)}%)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Strategy Rule
+                  <select value={strategy} onChange={(e) => setStrategyRule(e.target.value as StrategyName)}>
+                    {STRATEGY_ORDER.map((ruleName) => (
+                      <option key={ruleName} value={ruleName}>
+                        {STRATEGY_TEMPLATES[ruleName].label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Backtest Timeframe
+                  <select value={backtestTimeframe} onChange={(e) => setBacktestTimeframe(e.target.value)}>
+                    <option value="5m">5m</option>
+                    <option value="15m">15m</option>
+                    <option value="1h">1h</option>
+                    <option value="1d">1d</option>
+                  </select>
+                </label>
+                <label>
+                  Lookback Candles
+                  <input
+                    type="number"
+                    min={120}
+                    max={2000}
+                    value={backtestLookback}
+                    onChange={(e) => setBacktestLookback(Number(e.target.value || 380))}
+                  />
+                </label>
+                <label>
+                  Initial Capital
+                  <input type="number" value={capital} onChange={(e) => setCapital(Number(e.target.value || 0))} />
+                </label>
+                <label>
+                  Paper Qty
+                  <input
+                    type="number"
+                    min={1}
+                    value={quickTradeQty}
+                    onChange={(e) => setQuickTradeQty(Math.max(1, Number(e.target.value || 1)))}
+                  />
+                </label>
+              </div>
+
+              <p className="muted">{strategyTemplate.description}</p>
+              <div className="param-grid">
+                {strategyTemplate.params.map((param) => (
+                  <label key={param.key}>
+                    {param.label}
+                    <input
+                      type="number"
+                      min={param.min}
+                      max={param.max}
+                      step={param.step}
+                      value={strategyParams[param.key] ?? strategyTemplate.defaults[param.key] ?? 0}
+                      onChange={(e) => updateStrategyParam(param.key, Number(e.target.value || 0))}
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <div className="quick-actions">
+                <button
+                  onClick={() =>
+                    selectedScanSymbol
+                      ? runBacktest({
+                          symbol: selectedScanSymbol,
+                          segment: "equity",
+                          keepScannerView: true,
+                        })
+                      : null
+                  }
+                  disabled={loading || !selectedScanSymbol}
+                >
+                  {loading ? "Running..." : "Backtest Selected Pick"}
+                </button>
+                <button
+                  onClick={() => (selectedScanItem ? runScannerPaperTrade(selectedScanItem, "buy") : null)}
+                  disabled={loading || !selectedScanItem}
+                >
+                  Paper Buy
+                </button>
+                <button
+                  onClick={() => (selectedScanItem ? runScannerPaperTrade(selectedScanItem, "sell") : null)}
+                  disabled={loading || !selectedScanItem}
+                >
+                  Paper Sell
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedScanSymbol) return;
+                    setSymbol(selectedScanSymbol);
+                    setSegment("equity");
+                    setView("strategy");
+                  }}
+                  disabled={!selectedScanSymbol}
+                >
+                  Open Strategy Lab
+                </button>
+              </div>
+
+              {selectedBacktest ? (
+                <div className="kv-grid">
+                  <div>
+                    <span>Backtest Symbol</span>
+                    <strong>{selectedScanSymbol}</strong>
+                  </div>
+                  <div>
+                    <span>Total Return</span>
+                    <strong>{fmt(selectedBacktest.total_return_pct)}%</strong>
+                  </div>
+                  <div>
+                    <span>Win Rate</span>
+                    <strong>{fmt(selectedBacktest.win_rate_pct)}%</strong>
+                  </div>
+                  <div>
+                    <span>Max Drawdown</span>
+                    <strong>{fmt(selectedBacktest.max_drawdown_pct)}%</strong>
+                  </div>
+                  <div>
+                    <span>Sharpe</span>
+                    <strong>{fmt(selectedBacktest.sharpe)}</strong>
+                  </div>
+                  <div>
+                    <span>Trades</span>
+                    <strong>{selectedBacktest.trades.length}</strong>
+                  </div>
+                </div>
+              ) : (
+                <p className="muted">No backtest for selected pick yet. Run backtest to evaluate before paper execution.</p>
+              )}
+            </section>
+
+            <section className="panel panel-wide">
               <h3>Top Intraday Opportunities</h3>
               <div className="scanner-grid">
                 {scanner.results.slice(0, 8).map((item) => (
@@ -608,10 +998,70 @@ export default function App() {
                     <p>
                       <b>RR Est:</b> {fmt(item.intraday_plan.rr_estimate)}
                     </p>
+                    {scanBacktests[item.symbol] ? (
+                      <p className="muted">
+                        BT: {fmt(scanBacktests[item.symbol].total_return_pct)}% return •{" "}
+                        {fmt(scanBacktests[item.symbol].win_rate_pct)}% win rate
+                      </p>
+                    ) : null}
+                    <div className="card-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedScanSymbol(item.symbol);
+                          setSymbol(item.symbol);
+                          setSegment("equity");
+                          const ruleName = recommendedStrategyForPick(item);
+                          setStrategyRule(ruleName);
+                        }}
+                      >
+                        Build
+                      </button>
+                      <button type="button" onClick={() => runScannerBacktest(item)} disabled={loading}>
+                        Backtest
+                      </button>
+                      <button type="button" onClick={() => runScannerPaperTrade(item)} disabled={loading}>
+                        Paper Trade
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
             </section>
+
+            {paperTradeLogs.length ? (
+              <section className="panel panel-wide">
+                <h3>Paper Trading Blotter</h3>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Symbol</th>
+                        <th>Side</th>
+                        <th>Qty</th>
+                        <th>Status</th>
+                        <th>Order ID</th>
+                        <th>Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paperTradeLogs.slice(0, 20).map((row) => (
+                        <tr key={`${row.ts}-${row.orderId}`}>
+                          <td>{new Date(row.ts).toLocaleTimeString()}</td>
+                          <td>{row.symbol}</td>
+                          <td>{row.side.toUpperCase()}</td>
+                          <td>{row.qty}</td>
+                          <td>{row.status.toUpperCase()}</td>
+                          <td>{row.orderId}</td>
+                          <td>{row.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null}
 
             <section className="panel panel-wide">
               <h3>Detailed Factor Table</h3>
@@ -628,6 +1078,7 @@ export default function App() {
                       <th>Breakout</th>
                       <th>Technical</th>
                       <th>Action</th>
+                      <th>Workflow</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -642,6 +1093,19 @@ export default function App() {
                         <td>{Math.round(item.breakout.score * 100)}%</td>
                         <td>{Math.round(item.technical.score * 100)}%</td>
                         <td>{item.action.toUpperCase()}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="table-btn"
+                            onClick={() => {
+                              setSelectedScanSymbol(item.symbol);
+                              setSymbol(item.symbol);
+                              setSegment("equity");
+                            }}
+                          >
+                            Select
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -717,23 +1181,61 @@ export default function App() {
       <>
         <section className="panel panel-wide">
           <h2>Strategy Lab</h2>
+          <p className="muted">Build and validate strategy settings before moving to paper or live execution.</p>
           <div className="controls-grid">
             <label>
               Rule
-              <select value={strategy} onChange={(e) => setStrategy(e.target.value)}>
-                <option value="smc_breakout">SMC Breakout</option>
-                <option value="ema_cross">EMA Cross</option>
-                <option value="rsi_reversion">RSI Reversion</option>
-                <option value="multi_timeframe_breakout">MTF Breakout</option>
+              <select value={strategy} onChange={(e) => setStrategyRule(e.target.value as StrategyName)}>
+                {STRATEGY_ORDER.map((ruleName) => (
+                  <option key={ruleName} value={ruleName}>
+                    {STRATEGY_TEMPLATES[ruleName].label}
+                  </option>
+                ))}
               </select>
+            </label>
+            <label>
+              Backtest Timeframe
+              <select value={backtestTimeframe} onChange={(e) => setBacktestTimeframe(e.target.value)}>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="1d">1d</option>
+              </select>
+            </label>
+            <label>
+              Lookback Candles
+              <input
+                type="number"
+                min={120}
+                max={2000}
+                value={backtestLookback}
+                onChange={(e) => setBacktestLookback(Number(e.target.value || 380))}
+              />
             </label>
             <label>
               Initial Capital
               <input type="number" value={capital} onChange={(e) => setCapital(Number(e.target.value || 0))} />
             </label>
-            <button onClick={runBacktest} disabled={loading}>
+            <button onClick={() => runBacktest()} disabled={loading}>
               {loading ? "Running..." : "Run Backtest"}
             </button>
+          </div>
+
+          <p className="muted">{strategyTemplate.description}</p>
+          <div className="param-grid">
+            {strategyTemplate.params.map((param) => (
+              <label key={param.key}>
+                {param.label}
+                <input
+                  type="number"
+                  min={param.min}
+                  max={param.max}
+                  step={param.step}
+                  value={strategyParams[param.key] ?? strategyTemplate.defaults[param.key] ?? 0}
+                  onChange={(e) => updateStrategyParam(param.key, Number(e.target.value || 0))}
+                />
+              </label>
+            ))}
           </div>
         </section>
 
@@ -756,6 +1258,14 @@ export default function App() {
               <div>
                 <span>Sharpe</span>
                 <strong>{fmt(backtest.sharpe)}</strong>
+              </div>
+              <div>
+                <span>Trades</span>
+                <strong>{backtest.trades.length}</strong>
+              </div>
+              <div>
+                <span>Final Equity</span>
+                <strong>{fmt(backtest.equity_curve[backtest.equity_curve.length - 1]?.equity ?? capital)}</strong>
               </div>
             </div>
             <h4>Recent Trades</h4>
@@ -877,7 +1387,7 @@ export default function App() {
             Planned Side
             <input value={analysis?.trade_plan.action.toUpperCase() ?? "BUY"} readOnly />
           </label>
-          <button onClick={placeOrder} disabled={loading}>
+          <button onClick={() => placeOrder()} disabled={loading}>
             Place Order
           </button>
         </div>
