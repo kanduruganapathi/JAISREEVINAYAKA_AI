@@ -11,6 +11,11 @@ class StrategyRule(BaseModel):
         "ema_cross",
         "rsi_reversion",
         "multi_timeframe_breakout",
+        "smc_liquidity_reversal",
+        "fvg_ob_retest",
+        "volume_displacement_breakout",
+        "premium_discount_reversion",
+        "hybrid_confluence_intraday",
     ]
     params: dict[str, float | int | str] = Field(default_factory=dict)
 

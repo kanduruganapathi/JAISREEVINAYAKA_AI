@@ -56,27 +56,108 @@ class AutoPaperWorkflowService:
                 "breakout_lookback": 20.0,
                 "breakout_buffer_bps": 5.0,
             },
+            "smc_liquidity_reversal": {
+                "require_choch": 1.0,
+                "long_rsi_floor": 34.0,
+                "short_rsi_cap": 66.0,
+                "min_body_atr_ratio": 0.45,
+                "zone_recent_window": 30.0,
+            },
+            "fvg_ob_retest": {
+                "require_displacement": 1.0,
+                "min_body_atr_ratio": 0.35,
+                "zone_recent_window": 30.0,
+            },
+            "volume_displacement_breakout": {
+                "breakout_lookback": 24.0,
+                "volume_multiplier": 1.35,
+                "breakout_buffer_bps": 5.0,
+                "min_body_atr_ratio": 0.65,
+            },
+            "premium_discount_reversion": {
+                "long_rsi_max": 45.0,
+                "short_rsi_min": 55.0,
+                "level_threshold": 0.0035,
+                "zone_recent_window": 30.0,
+            },
+            "hybrid_confluence_intraday": {
+                "news_score": 0.5,
+                "fundamental_score": 0.5,
+                "long_threshold": 3.4,
+                "short_threshold": 3.4,
+                "zone_recent_window": 30.0,
+            },
         }
 
-    @staticmethod
-    def _choose_strategy(item: StockScanResult) -> tuple[str, dict[str, float]]:
-        if item.breakout.score >= 0.72:
-            return "multi_timeframe_breakout", AutoPaperWorkflowService._strategy_presets()["multi_timeframe_breakout"]
+    def _strategy_params_for(self, item: StockScanResult, strategy_name: str) -> dict[str, float]:
+        params = dict(self._strategy_presets()[strategy_name])
+        if strategy_name == "hybrid_confluence_intraday":
+            params["news_score"] = float(item.news.score)
+            params["fundamental_score"] = float(item.fundamental.score)
+            # Increase confidence threshold when signal quality is weak.
+            weak_quality = (
+                item.news.score < 0.52
+                or item.fundamental.score < 0.5
+                or item.technical.score < 0.55
+                or item.breakout.score < 0.52
+            )
+            if weak_quality:
+                params["long_threshold"] = 3.8
+                params["short_threshold"] = 3.8
+        return params
+
+    def _choose_strategy(self, item: StockScanResult) -> tuple[str, dict[str, float]]:
+        if (
+            item.news.score >= 0.6
+            and item.fundamental.score >= 0.55
+            and item.technical.score >= 0.58
+            and item.breakout.score >= 0.55
+        ):
+            name = "hybrid_confluence_intraday"
+            return name, self._strategy_params_for(item, name)
+
+        if item.breakout.score >= 0.72 and item.technical.score >= 0.6:
+            name = "volume_displacement_breakout"
+            return name, self._strategy_params_for(item, name)
+
+        if item.technical.score >= 0.62 and item.breakout.score >= 0.55:
+            name = "fvg_ob_retest"
+            return name, self._strategy_params_for(item, name)
+
+        if item.action == "watch" and item.bias == "neutral":
+            name = "premium_discount_reversion"
+            return name, self._strategy_params_for(item, name)
+
+        if item.news.signal != item.technical.signal and item.technical.signal != "neutral":
+            name = "smc_liquidity_reversal"
+            return name, self._strategy_params_for(item, name)
+
         if item.technical.score >= 0.65:
-            return "ema_cross", AutoPaperWorkflowService._strategy_presets()["ema_cross"]
-        if item.bias == "neutral":
-            return "rsi_reversion", AutoPaperWorkflowService._strategy_presets()["rsi_reversion"]
-        return "smc_breakout", AutoPaperWorkflowService._strategy_presets()["smc_breakout"]
+            name = "ema_cross"
+            return name, self._strategy_params_for(item, name)
+
+        name = "smc_breakout"
+        return name, self._strategy_params_for(item, name)
 
     def _strategy_candidates(self, item: StockScanResult) -> list[tuple[str, dict[str, float]]]:
-        presets = self._strategy_presets()
         preferred_name, _ = self._choose_strategy(item)
-        order = [preferred_name, "smc_breakout", "ema_cross", "rsi_reversion", "multi_timeframe_breakout"]
+        order = [
+            preferred_name,
+            "hybrid_confluence_intraday",
+            "volume_displacement_breakout",
+            "fvg_ob_retest",
+            "smc_liquidity_reversal",
+            "premium_discount_reversion",
+            "smc_breakout",
+            "ema_cross",
+            "rsi_reversion",
+            "multi_timeframe_breakout",
+        ]
         deduped: list[str] = []
         for name in order:
             if name not in deduped:
                 deduped.append(name)
-        return [(name, presets[name]) for name in deduped]
+        return [(name, self._strategy_params_for(item, name)) for name in deduped]
 
     def _score_backtest(self, bt: AutoBacktestSummary) -> float:
         # Favor robust systems: positive return + sharpe + sufficient sample size.

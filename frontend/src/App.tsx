@@ -30,7 +30,16 @@ const VIEW_ITEMS: Array<{ key: ViewKey; label: string; hint: string }> = [
   { key: "chat", label: "Market Intel", hint: "Scenario Q&A and market intelligence" },
 ];
 
-type StrategyName = "smc_breakout" | "ema_cross" | "rsi_reversion" | "multi_timeframe_breakout";
+type StrategyName =
+  | "smc_breakout"
+  | "ema_cross"
+  | "rsi_reversion"
+  | "multi_timeframe_breakout"
+  | "smc_liquidity_reversal"
+  | "fvg_ob_retest"
+  | "volume_displacement_breakout"
+  | "premium_discount_reversion"
+  | "hybrid_confluence_intraday";
 type StrategyParamMap = Record<string, number>;
 
 type StrategyTemplate = {
@@ -101,9 +110,97 @@ const STRATEGY_TEMPLATES: Record<StrategyName, StrategyTemplate> = {
       breakout_buffer_bps: 5,
     },
   },
+  smc_liquidity_reversal: {
+    label: "SMC Liquidity Reversal",
+    description: "Liquidity sweep + CHOCH reversal + displacement confirmation.",
+    params: [
+      { key: "require_choch", label: "Require CHOCH (1/0)", min: 0, max: 1, step: 1 },
+      { key: "long_rsi_floor", label: "Long RSI Floor", min: 5, max: 65, step: 1 },
+      { key: "short_rsi_cap", label: "Short RSI Cap", min: 35, max: 95, step: 1 },
+      { key: "min_body_atr_ratio", label: "Min Body/ATR", min: 0, max: 4, step: 0.05 },
+    ],
+    defaults: {
+      require_choch: 1,
+      long_rsi_floor: 34,
+      short_rsi_cap: 66,
+      min_body_atr_ratio: 0.45,
+    },
+  },
+  fvg_ob_retest: {
+    label: "FVG + OB Retest",
+    description: "Trade only when price retests fresh fair-value-gap or order-block zone.",
+    params: [
+      { key: "require_displacement", label: "Require Displacement (1/0)", min: 0, max: 1, step: 1 },
+      { key: "min_body_atr_ratio", label: "Min Body/ATR", min: 0, max: 4, step: 0.05 },
+      { key: "zone_recent_window", label: "Zone Recent Window", min: 8, max: 100, step: 1 },
+    ],
+    defaults: {
+      require_displacement: 1,
+      min_body_atr_ratio: 0.35,
+      zone_recent_window: 30,
+    },
+  },
+  volume_displacement_breakout: {
+    label: "Volume Displacement Breakout",
+    description: "Breakout with volume surge, displacement candle and trend alignment.",
+    params: [
+      { key: "breakout_lookback", label: "Breakout Lookback", min: 10, max: 140, step: 1 },
+      { key: "volume_multiplier", label: "Volume Multiplier", min: 0.5, max: 5, step: 0.05 },
+      { key: "breakout_buffer_bps", label: "Breakout Buffer (bps)", min: 0, max: 80, step: 1 },
+      { key: "min_body_atr_ratio", label: "Min Body/ATR", min: 0, max: 5, step: 0.05 },
+    ],
+    defaults: {
+      breakout_lookback: 24,
+      volume_multiplier: 1.35,
+      breakout_buffer_bps: 5,
+      min_body_atr_ratio: 0.65,
+    },
+  },
+  premium_discount_reversion: {
+    label: "Premium/Discount Reversion",
+    description: "Mean-reversion from premium-discount zones using SMC filters.",
+    params: [
+      { key: "long_rsi_max", label: "Long RSI Max", min: 10, max: 65, step: 1 },
+      { key: "short_rsi_min", label: "Short RSI Min", min: 35, max: 95, step: 1 },
+      { key: "level_threshold", label: "S/R Threshold", min: 0.001, max: 0.03, step: 0.0005 },
+      { key: "zone_recent_window", label: "Zone Recent Window", min: 8, max: 100, step: 1 },
+    ],
+    defaults: {
+      long_rsi_max: 45,
+      short_rsi_min: 55,
+      level_threshold: 0.0035,
+      zone_recent_window: 30,
+    },
+  },
+  hybrid_confluence_intraday: {
+    label: "Hybrid Confluence Intraday",
+    description: "News + fundamental + technical + SMC + price-action unified model.",
+    params: [
+      { key: "news_score", label: "News Score", min: 0, max: 1, step: 0.01 },
+      { key: "fundamental_score", label: "Fundamental Score", min: 0, max: 1, step: 0.01 },
+      { key: "long_threshold", label: "Long Threshold", min: 1, max: 10, step: 0.1 },
+      { key: "short_threshold", label: "Short Threshold", min: 1, max: 10, step: 0.1 },
+    ],
+    defaults: {
+      news_score: 0.5,
+      fundamental_score: 0.5,
+      long_threshold: 3.4,
+      short_threshold: 3.4,
+    },
+  },
 };
 
-const STRATEGY_ORDER: StrategyName[] = ["smc_breakout", "ema_cross", "rsi_reversion", "multi_timeframe_breakout"];
+const STRATEGY_ORDER: StrategyName[] = [
+  "hybrid_confluence_intraday",
+  "smc_liquidity_reversal",
+  "fvg_ob_retest",
+  "volume_displacement_breakout",
+  "premium_discount_reversion",
+  "smc_breakout",
+  "ema_cross",
+  "rsi_reversion",
+  "multi_timeframe_breakout",
+];
 
 type PaperTradeLog = {
   ts: string;
@@ -155,10 +252,31 @@ function defaultStrategyParams(rule: StrategyName): StrategyParamMap {
 function recommendedStrategyForPick(
   item: StockScanResponse["results"][number]
 ): StrategyName {
-  if (item.breakout.score >= 0.72) return "multi_timeframe_breakout";
-  if (item.technical.score >= 0.65) return "ema_cross";
+  if (
+    item.news.score >= 0.6 &&
+    item.fundamental.score >= 0.55 &&
+    item.technical.score >= 0.58 &&
+    item.breakout.score >= 0.55
+  ) {
+    return "hybrid_confluence_intraday";
+  }
+  if (item.breakout.score >= 0.72 && item.technical.score >= 0.6) return "volume_displacement_breakout";
+  if (item.technical.score >= 0.62 && item.breakout.score >= 0.55) return "fvg_ob_retest";
+  if (item.news.signal !== item.technical.signal && item.technical.signal !== "neutral") return "smc_liquidity_reversal";
   if (item.bias === "neutral") return "rsi_reversion";
   return "smc_breakout";
+}
+
+function strategyParamsFromScanItem(
+  rule: StrategyName,
+  item: StockScanResponse["results"][number]
+): StrategyParamMap {
+  const params = defaultStrategyParams(rule);
+  if (rule === "hybrid_confluence_intraday") {
+    params.news_score = Number(item.news.score.toFixed(2));
+    params.fundamental_score = Number(item.fundamental.score.toFixed(2));
+  }
+  return params;
 }
 
 export default function App() {
@@ -446,7 +564,17 @@ export default function App() {
     const targetSymbol = opts?.symbol ?? symbol;
     const targetSegment = opts?.segment ?? segment;
     const ruleName = opts?.ruleName ?? strategy;
-    const params = opts?.params ?? strategyParams;
+    let params = { ...(opts?.params ?? strategyParams) };
+    if (ruleName === "hybrid_confluence_intraday" && !opts?.params && analysis) {
+      const newsSignal = analysis.signals.find((x) => x.agent === "news_analyst");
+      const fundamentalSignal = analysis.signals.find((x) => x.agent === "fundamental_analyst");
+      params = {
+        ...params,
+        news_score: Number((newsSignal?.confidence ?? liveNews.score ?? 0.5).toFixed(2)),
+        fundamental_score: Number((fundamentalSignal?.confidence ?? 0.5).toFixed(2)),
+      };
+      setStrategyParams(params);
+    }
 
     setError("");
     setLoading(true);
@@ -570,10 +698,11 @@ export default function App() {
 
   const runScannerBacktest = async (item: StockScanResponse["results"][number]) => {
     const recommendedRule = recommendedStrategyForPick(item);
-    const recommendedParams = defaultStrategyParams(recommendedRule);
+    const recommendedParams = strategyParamsFromScanItem(recommendedRule, item);
     setSymbol(item.symbol);
     setSegment("equity");
     setStrategyRule(recommendedRule);
+    setStrategyParams(recommendedParams);
     setSelectedScanSymbol(item.symbol);
     await runBacktest({
       symbol: item.symbol,
@@ -1364,6 +1493,7 @@ export default function App() {
                           setSegment("equity");
                           const ruleName = recommendedStrategyForPick(item);
                           setStrategyRule(ruleName);
+                          setStrategyParams(strategyParamsFromScanItem(ruleName, item));
                         }}
                       >
                         Build
