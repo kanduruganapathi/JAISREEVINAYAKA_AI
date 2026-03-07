@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException
 
 from app.core.config import get_settings
 from app.models.trading import OrderRequest, OrderResponse
+from app.models.workflow import AutoPaperWorkflowRequest, AutoPaperWorkflowResponse
+from app.services.auto_workflow import AutoPaperWorkflowService
 from app.services.groww_client import GrowwBrokerClient
 from app.services.market_data import DataProvider
 from app.services.notification_service import NotificationService
@@ -11,6 +13,7 @@ router = APIRouter()
 broker = GrowwBrokerClient()
 notifier = NotificationService()
 data = DataProvider()
+auto_workflow = AutoPaperWorkflowService()
 
 
 @router.post("/trading/order", response_model=OrderResponse)
@@ -46,3 +49,8 @@ async def place_order(req: OrderRequest) -> OrderResponse:
 @router.post("/notifications/whatsapp/test")
 def whatsapp_test(message: str = "Trading system alert channel is active") -> dict:
     return notifier.send_whatsapp(message)
+
+
+@router.post("/trading/workflow/auto-paper", response_model=AutoPaperWorkflowResponse)
+async def run_auto_paper_workflow(req: AutoPaperWorkflowRequest) -> AutoPaperWorkflowResponse:
+    return await auto_workflow.run(req)

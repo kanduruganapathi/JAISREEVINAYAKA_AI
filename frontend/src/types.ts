@@ -100,6 +100,52 @@ export type OrderResponse = {
   broker_payload?: Record<string, unknown>;
 };
 
+export type AutoPaperWorkflowResponse = {
+  generated_at: string;
+  timeframe: string;
+  universe: string;
+  summary: {
+    scanned: number;
+    selected_for_backtest: number;
+    qualified_for_paper: number;
+    paper_orders: number;
+    rejected: number;
+  };
+  results: Array<{
+    symbol: string;
+    rank: number;
+    scanner_score: number;
+    scanner_bias: Bias;
+    scanner_action: "buy" | "sell" | "watch";
+    chosen_strategy: string;
+    strategy_params: Record<string, number>;
+    backtest: {
+      total_return_pct: number;
+      win_rate_pct: number;
+      max_drawdown_pct: number;
+      sharpe: number;
+      trades: number;
+    };
+    gate: {
+      passed: boolean;
+      reasons: string[];
+    };
+    risk_plan: {
+      side: "buy" | "sell";
+      qty: number;
+      entry_price: number;
+      stop_distance: number;
+      notional: number;
+    } | null;
+    order: {
+      order_id: string;
+      status: string;
+      mode: string;
+      message: string;
+    } | null;
+  }>;
+};
+
 export type PortfolioResponse = {
   total_value: number;
   invested_value: number;

@@ -43,6 +43,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  runAutoPaperWorkflow: (payload: unknown) =>
+    request("/api/v1/trading/workflow/auto-paper", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   placeOrder: (payload: unknown) =>
     request("/api/v1/trading/order", {
       method: "POST",

@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "./api/client";
 import {
   AnalysisResponse,
+  AutoPaperWorkflowResponse,
   BacktestResponse,
   GrowwPortfolioSyncResponse,
   OrderResponse,
@@ -189,6 +190,12 @@ export default function App() {
   const [paperTradeLogs, setPaperTradeLogs] = useState<PaperTradeLog[]>([]);
   const [scannerTimeframe, setScannerTimeframe] = useState("15m");
   const [scannerTopN, setScannerTopN] = useState(15);
+  const [autoMaxPaperTrades, setAutoMaxPaperTrades] = useState(3);
+  const [autoMinScannerScore, setAutoMinScannerScore] = useState(0.58);
+  const [autoMinWinRate, setAutoMinWinRate] = useState(45);
+  const [autoMinReturnPct, setAutoMinReturnPct] = useState(0);
+  const [autoMinSharpe, setAutoMinSharpe] = useState(0);
+  const [autoWorkflowResult, setAutoWorkflowResult] = useState<AutoPaperWorkflowResponse | null>(null);
   const [riskPerTradePct, setRiskPerTradePct] = useState(1);
   const [dailyLossLimitPct, setDailyLossLimitPct] = useState(2);
 
@@ -408,6 +415,7 @@ export default function App() {
         include_technical: true,
       })) as StockScanResponse;
       setScanner(result);
+      setAutoWorkflowResult(null);
       setView("scanner");
     } catch (err) {
       setError(String(err));
@@ -606,6 +614,68 @@ export default function App() {
       segment: "equity",
       keepScannerView: true,
     });
+  };
+
+  const runAutoPaperWorkflow = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const result = (await api.runAutoPaperWorkflow({
+        universe: "nifty50",
+        symbols: [],
+        timeframe: scannerTimeframe,
+        top_n: scannerTopN,
+        include_news: true,
+        include_fundamental: true,
+        include_breakout: true,
+        include_technical: true,
+        backtest_lookback_candles: backtestLookback,
+        initial_capital: capital,
+        risk_per_trade_pct: riskPerTradePct,
+        max_paper_trades: autoMaxPaperTrades,
+        min_scanner_score: autoMinScannerScore,
+        min_backtest_win_rate: autoMinWinRate,
+        min_backtest_return_pct: autoMinReturnPct,
+        min_backtest_sharpe: autoMinSharpe,
+        min_backtest_trades: 4,
+        require_directional_action: true,
+      })) as AutoPaperWorkflowResponse;
+      setAutoWorkflowResult(result);
+
+      const btMap: Record<string, BacktestResponse> = {};
+      result.results.forEach((row) => {
+        btMap[row.symbol] = {
+          symbol: row.symbol,
+          total_return_pct: row.backtest.total_return_pct,
+          win_rate_pct: row.backtest.win_rate_pct,
+          max_drawdown_pct: row.backtest.max_drawdown_pct,
+          sharpe: row.backtest.sharpe,
+          trades: [],
+          equity_curve: [],
+        };
+      });
+      setScanBacktests((prev) => ({ ...prev, ...btMap }));
+
+      const newPaperLogs: PaperTradeLog[] = result.results
+        .filter((x) => !!x.order)
+        .map((x) => ({
+          ts: result.generated_at,
+          symbol: x.symbol,
+          side: x.risk_plan?.side ?? "buy",
+          qty: x.risk_plan?.qty ?? 0,
+          status: x.order?.status ?? "unknown",
+          orderId: x.order?.order_id ?? "-",
+          message: x.order?.message ?? "",
+        }));
+      if (newPaperLogs.length) {
+        setPaperTradeLogs((prev) => [...newPaperLogs, ...prev]);
+      }
+      setView("scanner");
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const askChat = async () => {
@@ -937,6 +1007,139 @@ export default function App() {
               {loading ? "Scanning..." : "Run Nifty 50 Scan"}
             </button>
           </div>
+        </section>
+
+        <section className="panel panel-wide">
+          <div className="row-head">
+            <div>
+              <h3>Auto Strategy, Backtest and Paper Workflow</h3>
+              <p>Automatically picks strategies from scan factors, validates with backtest, and places paper trades.</p>
+            </div>
+            <button onClick={runAutoPaperWorkflow} disabled={loading}>
+              {loading ? "Running Workflow..." : "Run Auto Workflow"}
+            </button>
+          </div>
+          <div className="controls-grid">
+            <label>
+              Max Paper Trades
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={autoMaxPaperTrades}
+                onChange={(e) => setAutoMaxPaperTrades(Math.max(1, Math.min(20, Number(e.target.value || 3))))}
+              />
+            </label>
+            <label>
+              Min Scanner Score
+              <input
+                type="number"
+                min={0.4}
+                max={0.95}
+                step={0.01}
+                value={autoMinScannerScore}
+                onChange={(e) => setAutoMinScannerScore(Math.max(0.4, Math.min(0.95, Number(e.target.value || 0.58))))}
+              />
+            </label>
+            <label>
+              Min Win Rate (%)
+              <input
+                type="number"
+                min={20}
+                max={80}
+                step={1}
+                value={autoMinWinRate}
+                onChange={(e) => setAutoMinWinRate(Math.max(20, Math.min(80, Number(e.target.value || 45))))}
+              />
+            </label>
+            <label>
+              Min Backtest Return (%)
+              <input
+                type="number"
+                min={-10}
+                max={50}
+                step={0.5}
+                value={autoMinReturnPct}
+                onChange={(e) => setAutoMinReturnPct(Math.max(-10, Math.min(50, Number(e.target.value || 0))))}
+              />
+            </label>
+            <label>
+              Min Sharpe
+              <input
+                type="number"
+                min={-1}
+                max={5}
+                step={0.1}
+                value={autoMinSharpe}
+                onChange={(e) => setAutoMinSharpe(Math.max(-1, Math.min(5, Number(e.target.value || 0))))}
+              />
+            </label>
+            <label>
+              Risk Per Trade (%)
+              <input
+                type="number"
+                min={0.25}
+                max={3}
+                step={0.25}
+                value={riskPerTradePct}
+                onChange={(e) => setRiskPerTradePct(Math.max(0.25, Math.min(3, Number(e.target.value || 1))))}
+              />
+            </label>
+          </div>
+          {autoWorkflowResult ? (
+            <>
+              <div className="headline-grid">
+                <article>
+                  <label>Scanned</label>
+                  <p className="big">{autoWorkflowResult.summary.scanned}</p>
+                </article>
+                <article>
+                  <label>Backtested</label>
+                  <p className="big">{autoWorkflowResult.summary.selected_for_backtest}</p>
+                </article>
+                <article className="bias-bull">
+                  <label>Qualified</label>
+                  <p className="big">{autoWorkflowResult.summary.qualified_for_paper}</p>
+                </article>
+                <article className="bias-bull">
+                  <label>Paper Orders</label>
+                  <p className="big">{autoWorkflowResult.summary.paper_orders}</p>
+                </article>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Strategy</th>
+                      <th>Return%</th>
+                      <th>Win%</th>
+                      <th>Sharpe</th>
+                      <th>Gate</th>
+                      <th>Reason</th>
+                      <th>Order</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {autoWorkflowResult.results.map((row) => (
+                      <tr key={`${row.symbol}-${row.rank}`}>
+                        <td>{row.symbol}</td>
+                        <td>{row.chosen_strategy}</td>
+                        <td>{fmt(row.backtest.total_return_pct)}%</td>
+                        <td>{fmt(row.backtest.win_rate_pct)}%</td>
+                        <td>{fmt(row.backtest.sharpe)}</td>
+                        <td>{row.gate.passed ? "PASS" : "FAIL"}</td>
+                        <td>{row.gate.reasons[0] ?? "Qualified"}</td>
+                        <td>{row.order ? `${row.order.status.toUpperCase()} ${row.order.order_id}` : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="muted">Run auto workflow to generate strategy decisions, backtest quality and paper orders.</p>
+          )}
         </section>
 
         {scanner ? (
