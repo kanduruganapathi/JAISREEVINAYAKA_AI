@@ -20,6 +20,46 @@ export type AnalysisResponse = {
     risk_reward_ratio: number;
     warnings: string[];
   };
+  indicator_snapshot: {
+    ema_20: number;
+    ema_50: number;
+    rsi_14: number;
+    macd: number;
+    signal: number;
+    histogram: number;
+    atr_14: number;
+    volatility: number;
+  };
+  timeframe_biases: Array<{
+    timeframe: string;
+    bias: Bias;
+    confidence: number;
+    note: string;
+  }>;
+  market_structure: {
+    trend: string;
+    bos: string;
+    choch: string;
+    support: number[];
+    resistance: number[];
+    premium_zone: Record<string, number> | null;
+    discount_zone: Record<string, number> | null;
+    liquidity_sweeps: Array<Record<string, unknown>>;
+    fvg_zones: Array<Record<string, unknown>>;
+    order_blocks: Array<Record<string, unknown>>;
+  } | null;
+  strategy_ideas: Array<{
+    name: string;
+    instrument: string;
+    direction: Bias;
+    setup: string;
+    entry_trigger: string;
+    stop_rule: string;
+    targets: string[];
+    confidence: number;
+    timeframe: string;
+  }>;
+  execution_checklist: string[];
   signals: Array<{
     agent: string;
     bias: Bias;

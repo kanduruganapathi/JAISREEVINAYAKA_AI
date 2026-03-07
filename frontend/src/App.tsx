@@ -1,8 +1,18 @@
 import { FormEvent, useMemo, useState } from "react";
 
 import { api } from "./api/client";
-import SectionCard from "./components/SectionCard";
 import { AnalysisResponse, BacktestResponse, PortfolioResponse } from "./types";
+
+type ViewKey = "dashboard" | "options" | "strategy" | "portfolio" | "execution" | "chat";
+
+const VIEW_ITEMS: Array<{ key: ViewKey; label: string; hint: string }> = [
+  { key: "dashboard", label: "Command Center", hint: "Bias, structure, confluence" },
+  { key: "options", label: "Options Desk", hint: "Nifty/BankNifty intraday playbook" },
+  { key: "strategy", label: "Strategy Lab", hint: "Backtest and edge validation" },
+  { key: "portfolio", label: "Portfolio", hint: "Risk, VaR, concentration" },
+  { key: "execution", label: "Execution", hint: "Paper/live separated" },
+  { key: "chat", label: "Market Intel", hint: "Ask scenario-based questions" },
+];
 
 const defaultPositions = JSON.stringify(
   [
@@ -13,38 +23,60 @@ const defaultPositions = JSON.stringify(
   2
 );
 
+function fmt(value: number | null | undefined, digits = 2): string {
+  if (value == null || Number.isNaN(value)) return "-";
+  return value.toFixed(digits);
+}
+
+function biasClass(bias: string): string {
+  if (bias === "bullish") return "bias-bull";
+  if (bias === "bearish") return "bias-bear";
+  return "bias-neutral";
+}
+
+function scoreBand(score: number): string {
+  if (score >= 0.75) return "A";
+  if (score >= 0.62) return "B";
+  if (score >= 0.5) return "C";
+  return "D";
+}
+
 export default function App() {
+  const [view, setView] = useState<ViewKey>("dashboard");
   const [health, setHealth] = useState("unknown");
 
   const [symbol, setSymbol] = useState("NIFTY");
   const [segment, setSegment] = useState("intraday_options");
   const [timeframe, setTimeframe] = useState("15m");
   const [notify, setNotify] = useState(true);
+
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
-
   const [backtest, setBacktest] = useState<BacktestResponse | null>(null);
-  const [strategy, setStrategy] = useState("smc_breakout");
-
   const [portfolio, setPortfolio] = useState<PortfolioResponse | null>(null);
+
+  const [strategy, setStrategy] = useState("smc_breakout");
   const [capital, setCapital] = useState(100000);
   const [positionsText, setPositionsText] = useState(defaultPositions);
 
   const [mode, setMode] = useState<"paper" | "live">("paper");
-  const [orderMsg, setOrderMsg] = useState<string>("");
   const [qty, setQty] = useState(25);
+  const [orderMsg, setOrderMsg] = useState("");
 
-  const [question, setQuestion] = useState("What is best risk plan for BankNifty intraday breakout today?");
+  const [question, setQuestion] = useState("Give me intraday BankNifty options plan with entry, stop, target and invalidation.");
   const [chatAnswer, setChatAnswer] = useState("");
 
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const biasTone = useMemo(() => {
-    if (!analysis) return "tone-neutral";
-    if (analysis.consensus_bias === "bullish") return "tone-bull";
-    if (analysis.consensus_bias === "bearish") return "tone-bear";
-    return "tone-neutral";
+  const overallTone = useMemo(() => {
+    if (!analysis) return "bias-neutral";
+    return biasClass(analysis.consensus_bias);
   }, [analysis]);
+
+  const optionsIdeas = useMemo(
+    () => analysis?.strategy_ideas.filter((x) => x.instrument.toLowerCase().includes("ce") || x.instrument.toLowerCase().includes("pe") || x.instrument.toLowerCase().includes("spread") || x.instrument.toLowerCase().includes("straddle")) ?? [],
+    [analysis]
+  );
 
   const refreshHealth = async () => {
     try {
@@ -60,21 +92,24 @@ export default function App() {
     setError("");
     setLoading(true);
     try {
-      const payload = {
-        symbol,
-        segment,
-        primary_timeframe: timeframe,
-        secondary_timeframes: ["5m", "1h", "1d"],
-        include_fundamental: true,
-        include_technical: true,
-        include_news: true,
-        include_events: true,
-        include_smc: true,
-        include_price_action: true,
-        include_indicators: true,
-      };
-      const result = (await api.runAnalysis(payload, notify)) as AnalysisResponse;
+      const result = (await api.runAnalysis(
+        {
+          symbol,
+          segment,
+          primary_timeframe: timeframe,
+          secondary_timeframes: ["5m", "15m", "1h", "1d"],
+          include_fundamental: true,
+          include_technical: true,
+          include_news: true,
+          include_events: true,
+          include_smc: true,
+          include_price_action: true,
+          include_indicators: true,
+        },
+        notify
+      )) as AnalysisResponse;
       setAnalysis(result);
+      setOrderMsg("");
     } catch (err) {
       setError(String(err));
     } finally {
@@ -86,7 +121,7 @@ export default function App() {
     setError("");
     setLoading(true);
     try {
-      const payload = {
+      const result = (await api.runBacktest({
         symbol,
         segment,
         candles: [],
@@ -94,9 +129,7 @@ export default function App() {
         commission_per_trade: 20,
         slippage_bps: 5,
         rule: { name: strategy, params: {} },
-      };
-      // backend uses supplied candles; for demo we reuse analysis request style by fetching generated set via MCP/backtest endpoint logic
-      const result = (await api.runBacktest(payload)) as BacktestResponse;
+      })) as BacktestResponse;
       setBacktest(result);
     } catch (err) {
       setError(String(err));
@@ -110,8 +143,7 @@ export default function App() {
     setLoading(true);
     try {
       const positions = JSON.parse(positionsText);
-      const payload = { capital, positions };
-      const result = (await api.analyzePortfolio(payload)) as PortfolioResponse;
+      const result = (await api.analyzePortfolio({ capital, positions })) as PortfolioResponse;
       setPortfolio(result);
     } catch (err) {
       setError(String(err));
@@ -124,7 +156,7 @@ export default function App() {
     setError("");
     setLoading(true);
     try {
-      const payload = {
+      const result = (await api.placeOrder({
         symbol,
         segment: segment.includes("option") ? "index_option" : "equity",
         side: analysis?.trade_plan.action === "sell" ? "sell" : "buy",
@@ -132,13 +164,8 @@ export default function App() {
         order_type: "market",
         product_type: "intraday",
         mode,
-      };
-      const result = (await api.placeOrder(payload)) as {
-        status: string;
-        order_id: string;
-        message: string;
-      };
-      setOrderMsg(`${result.status}: ${result.order_id} - ${result.message}`);
+      })) as { status: string; order_id: string; message: string };
+      setOrderMsg(`${result.status.toUpperCase()} | ${result.order_id} | ${result.message}`);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -156,8 +183,9 @@ export default function App() {
           symbol,
           segment,
           timeframe,
-          current_bias: analysis?.consensus_bias,
           trade_plan: analysis?.trade_plan,
+          checklist: analysis?.execution_checklist,
+          strategy_ideas: analysis?.strategy_ideas,
         },
       })) as { answer: string };
       setChatAnswer(result.answer);
@@ -168,85 +196,196 @@ export default function App() {
     }
   };
 
-  return (
-    <div className="app-shell">
-      <div className="ambient one" />
-      <div className="ambient two" />
-      <header className="hero">
-        <div>
-          <h1>Multi-Agent Trading Command Center</h1>
-          <p>SMC + Price Action + Fundamentals + News + Events + Risk + Execution</p>
-        </div>
-        <div className="hero-actions">
-          <button onClick={refreshHealth}>Backend Health</button>
-          <span className="pill">{health}</span>
-        </div>
-      </header>
+  const renderDashboard = () => {
+    if (!analysis) {
+      return (
+        <section className="panel panel-wide">
+          <h2>Run Multi-Agent Analysis</h2>
+          <p>Configure symbol, segment and timeframe, then execute analysis to generate trading plan.</p>
+        </section>
+      );
+    }
 
-      <main className="grid">
-        <SectionCard title="Market Analysis" subtitle="Multi-timeframe + smart-money confluence">
-          <form className="form-grid" onSubmit={runAnalysis}>
-            <label>
-              Symbol
-              <input value={symbol} onChange={(e) => setSymbol(e.target.value)} />
-            </label>
-            <label>
-              Segment
-              <select value={segment} onChange={(e) => setSegment(e.target.value)}>
-                <option value="intraday_options">Intraday Index Options</option>
-                <option value="stock_options">Stock Options</option>
-                <option value="equity">Equity</option>
-                <option value="swing_stock">Swing Stock</option>
-              </select>
-            </label>
-            <label>
-              Timeframe
-              <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>
-                <option>5m</option>
-                <option>15m</option>
-                <option>1h</option>
-                <option>1d</option>
-              </select>
-            </label>
-            <label className="inline">
-              <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
-              WhatsApp alerts
-            </label>
-            <button type="submit" disabled={loading}>
-              {loading ? "Running..." : "Run Analysis"}
-            </button>
-          </form>
+    const structure = analysis.market_structure;
 
-          {analysis ? (
-            <div className={`result ${biasTone}`}>
-              <h3>
-                {analysis.symbol} | {analysis.consensus_bias.toUpperCase()} | Score {analysis.score}
-              </h3>
-              <p>{analysis.trade_plan.rationale}</p>
-              <p>
-                Action: <strong>{analysis.trade_plan.action.toUpperCase()}</strong> | Entry: {analysis.trade_plan.entry ?? "-"} |
-                Stop: {analysis.trade_plan.stop_loss ?? "-"} | Target: {analysis.trade_plan.target ?? "-"}
-              </p>
-              <p>
-                Max Position Size: {analysis.risk.max_position_size} | RR: {analysis.risk.risk_reward_ratio}
-              </p>
-              <div className="agent-grid">
-                {analysis.signals.map((s) => (
-                  <article key={s.agent} className="agent">
-                    <strong>{s.agent}</strong>
-                    <span>{s.bias}</span>
-                    <span>{s.confidence}</span>
-                  </article>
-                ))}
-              </div>
+    return (
+      <>
+        <section className={`panel panel-wide ${overallTone}`}>
+          <div className="panel-topline">
+            <h2>
+              {analysis.symbol} • {analysis.segment.replace(/_/g, " ")}
+            </h2>
+            <span className="grade-chip">Setup Grade {scoreBand(analysis.score)}</span>
+          </div>
+          <div className="headline-grid">
+            <article>
+              <label>Consensus</label>
+              <p className="big">{analysis.consensus_bias.toUpperCase()}</p>
+            </article>
+            <article>
+              <label>Action</label>
+              <p className="big">{analysis.trade_plan.action.toUpperCase()}</p>
+            </article>
+            <article>
+              <label>Entry / Stop / Target</label>
+              <p>{fmt(analysis.trade_plan.entry)} / {fmt(analysis.trade_plan.stop_loss)} / {fmt(analysis.trade_plan.target)}</p>
+            </article>
+            <article>
+              <label>Risk Reward</label>
+              <p>{fmt(analysis.risk.risk_reward_ratio)}</p>
+            </article>
+          </div>
+          <div className="confidence-wrap">
+            <span>Confidence {Math.round(analysis.score * 100)}%</span>
+            <div className="meter">
+              <div className="meter-fill" style={{ width: `${Math.round(analysis.score * 100)}%` }} />
             </div>
-          ) : null}
-        </SectionCard>
+          </div>
+          <p className="muted">{analysis.trade_plan.rationale}</p>
+        </section>
 
-        <SectionCard title="Strategy Lab" subtitle="Backtesting and walk-forward validation">
-          <div className="form-grid">
+        <section className="panel">
+          <h3>Indicator Snapshot</h3>
+          <div className="kv-grid">
+            <div><span>EMA20</span><strong>{fmt(analysis.indicator_snapshot.ema_20)}</strong></div>
+            <div><span>EMA50</span><strong>{fmt(analysis.indicator_snapshot.ema_50)}</strong></div>
+            <div><span>RSI14</span><strong>{fmt(analysis.indicator_snapshot.rsi_14)}</strong></div>
+            <div><span>MACD Hist</span><strong>{fmt(analysis.indicator_snapshot.histogram, 4)}</strong></div>
+            <div><span>ATR14</span><strong>{fmt(analysis.indicator_snapshot.atr_14)}</strong></div>
+            <div><span>Volatility</span><strong>{fmt(analysis.indicator_snapshot.volatility, 4)}</strong></div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <h3>Multi-Timeframe Matrix</h3>
+          <div className="matrix">
+            {analysis.timeframe_biases.map((tf) => (
+              <article key={tf.timeframe} className={`matrix-row ${biasClass(tf.bias)}`}>
+                <strong>{tf.timeframe}</strong>
+                <span>{tf.bias.toUpperCase()}</span>
+                <span>{Math.round(tf.confidence * 100)}%</span>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel">
+          <h3>Market Structure (SMC)</h3>
+          {structure ? (
+            <>
+              <div className="kv-grid">
+                <div><span>Trend</span><strong>{structure.trend}</strong></div>
+                <div><span>BOS</span><strong>{structure.bos}</strong></div>
+                <div><span>CHOCH</span><strong>{structure.choch}</strong></div>
+                <div><span>Liquidity Sweeps</span><strong>{structure.liquidity_sweeps.length}</strong></div>
+              </div>
+              <p className="muted">Support: {structure.support.map((x) => fmt(x)).join(", ") || "-"}</p>
+              <p className="muted">Resistance: {structure.resistance.map((x) => fmt(x)).join(", ") || "-"}</p>
+            </>
+          ) : (
+            <p>No structure snapshot available.</p>
+          )}
+        </section>
+
+        <section className="panel panel-wide">
+          <h3>Strategy Ideas</h3>
+          <div className="ideas-grid">
+            {analysis.strategy_ideas.map((idea) => (
+              <article key={idea.name} className={`idea-card ${biasClass(idea.direction)}`}>
+                <header>
+                  <strong>{idea.name}</strong>
+                  <span>{Math.round(idea.confidence * 100)}%</span>
+                </header>
+                <p className="muted">{idea.instrument}</p>
+                <p>{idea.setup}</p>
+                <p><b>Entry:</b> {idea.entry_trigger}</p>
+                <p><b>Stop:</b> {idea.stop_rule}</p>
+                <p><b>Targets:</b> {idea.targets.join(" | ")}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel panel-wide">
+          <h3>Execution Checklist</h3>
+          <ul className="checklist">
+            {analysis.execution_checklist.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          {!!analysis.risk.warnings.length && (
+            <div className="warn-box">
+              {analysis.risk.warnings.map((warn) => (
+                <p key={warn}>{warn}</p>
+              ))}
+            </div>
+          )}
+        </section>
+      </>
+    );
+  };
+
+  const renderOptionsDesk = () => {
+    return (
+      <>
+        <section className="panel panel-wide">
+          <h2>Intraday Options Playbook</h2>
+          <p>
+            Focus: NIFTY, BANKNIFTY, SENSEX with structure-confirmed entries, strict invalidation and fast risk-off exits.
+          </p>
+          <div className="playbook-grid">
+            <article>
+              <h4>Session Plan</h4>
+              <p>1) Wait for opening structure.</p>
+              <p>2) Execute only after BOS + pullback validation.</p>
+              <p>3) Avoid late fresh entries near close.</p>
+            </article>
+            <article>
+              <h4>Risk Guardrails</h4>
+              <p>Risk per trade &lt;= 1% capital.</p>
+              <p>Option premium SL 20-25% max.</p>
+              <p>No averaging losing option legs.</p>
+            </article>
+            <article>
+              <h4>Confirmation Stack</h4>
+              <p>Trend alignment: 15m + 5m.</p>
+              <p>Liquidity sweep + displacement preferred.</p>
+              <p>Entry only with volume expansion.</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="panel panel-wide">
+          <h3>Current Option Strategy Setups</h3>
+          {!analysis ? <p>Run analysis first.</p> : null}
+          {!!analysis && !optionsIdeas.length ? <p>No options-specific setup. Stay selective.</p> : null}
+          <div className="ideas-grid">
+            {optionsIdeas.map((idea) => (
+              <article key={idea.name} className={`idea-card ${biasClass(idea.direction)}`}>
+                <header>
+                  <strong>{idea.name}</strong>
+                  <span>{idea.timeframe}</span>
+                </header>
+                <p>{idea.instrument}</p>
+                <p><b>Entry:</b> {idea.entry_trigger}</p>
+                <p><b>Stop:</b> {idea.stop_rule}</p>
+                <p><b>Targets:</b> {idea.targets.join(" | ")}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </>
+    );
+  };
+
+  const renderStrategyLab = () => {
+    return (
+      <>
+        <section className="panel panel-wide">
+          <h2>Strategy Lab</h2>
+          <div className="controls-grid">
             <label>
-              Strategy
+              Rule
               <select value={strategy} onChange={(e) => setStrategy(e.target.value)}>
                 <option value="smc_breakout">SMC Breakout</option>
                 <option value="ema_cross">EMA Cross</option>
@@ -255,103 +394,215 @@ export default function App() {
               </select>
             </label>
             <label>
-              Capital
-              <input
-                type="number"
-                value={capital}
-                onChange={(e) => setCapital(Number(e.target.value || 0))}
-              />
+              Initial Capital
+              <input type="number" value={capital} onChange={(e) => setCapital(Number(e.target.value || 0))} />
             </label>
-            <button onClick={runBacktest} disabled={loading}>
-              Run Backtest
-            </button>
+            <button onClick={runBacktest} disabled={loading}>{loading ? "Running..." : "Run Backtest"}</button>
           </div>
-          {backtest ? (
-            <div className="result">
-              <p>Total Return: {backtest.total_return_pct}%</p>
-              <p>Win Rate: {backtest.win_rate_pct}%</p>
-              <p>Max Drawdown: {backtest.max_drawdown_pct}%</p>
-              <p>Sharpe: {backtest.sharpe}</p>
-              <p>Trades: {backtest.trades.length}</p>
-            </div>
-          ) : null}
-        </SectionCard>
+        </section>
 
-        <SectionCard title="Portfolio Analytics" subtitle="PnL, concentration risk, VaR">
-          <div className="form-grid">
-            <label>
-              Portfolio Capital
-              <input
-                type="number"
-                value={capital}
-                onChange={(e) => setCapital(Number(e.target.value || 0))}
-              />
-            </label>
-            <label>
-              Positions JSON
-              <textarea value={positionsText} onChange={(e) => setPositionsText(e.target.value)} rows={8} />
-            </label>
-            <button onClick={runPortfolio} disabled={loading}>
-              Analyze Portfolio
-            </button>
+        {backtest && (
+          <section className="panel panel-wide">
+            <h3>Backtest Result</h3>
+            <div className="kv-grid">
+              <div><span>Total Return</span><strong>{fmt(backtest.total_return_pct)}%</strong></div>
+              <div><span>Win Rate</span><strong>{fmt(backtest.win_rate_pct)}%</strong></div>
+              <div><span>Max Drawdown</span><strong>{fmt(backtest.max_drawdown_pct)}%</strong></div>
+              <div><span>Sharpe</span><strong>{fmt(backtest.sharpe)}</strong></div>
+            </div>
+            <h4>Recent Trades</h4>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Side</th>
+                    <th>Entry</th>
+                    <th>Exit</th>
+                    <th>PnL</th>
+                    <th>PnL%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backtest.trades.slice(-8).map((t, idx) => (
+                    <tr key={`${t.entry_ts}-${idx}`}>
+                      <td>{t.side}</td>
+                      <td>{fmt(t.entry)}</td>
+                      <td>{fmt(t.exit)}</td>
+                      <td>{fmt(t.pnl)}</td>
+                      <td>{fmt(t.pnl_pct)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+      </>
+    );
+  };
+
+  const renderPortfolio = () => (
+    <>
+      <section className="panel panel-wide">
+        <h2>Portfolio Risk Engine</h2>
+        <div className="controls-grid">
+          <label>
+            Capital
+            <input type="number" value={capital} onChange={(e) => setCapital(Number(e.target.value || 0))} />
+          </label>
+          <label className="span-2">
+            Positions JSON
+            <textarea rows={8} value={positionsText} onChange={(e) => setPositionsText(e.target.value)} />
+          </label>
+          <button onClick={runPortfolio} disabled={loading}>Analyze Portfolio</button>
+        </div>
+      </section>
+
+      {portfolio && (
+        <section className="panel panel-wide">
+          <h3>Portfolio Snapshot</h3>
+          <div className="kv-grid">
+            <div><span>Total Value</span><strong>{fmt(portfolio.total_value)}</strong></div>
+            <div><span>Total PnL</span><strong>{fmt(portfolio.total_pnl)} ({fmt(portfolio.total_pnl_pct)}%)</strong></div>
+            <div><span>Concentration Risk</span><strong>{fmt(portfolio.concentration_risk_pct)}%</strong></div>
+            <div><span>VaR 95</span><strong>{fmt(portfolio.value_at_risk_95)}</strong></div>
           </div>
-          {portfolio ? (
-            <div className="result">
-              <p>Total Value: {portfolio.total_value}</p>
-              <p>Total PnL: {portfolio.total_pnl} ({portfolio.total_pnl_pct}%)</p>
-              <p>Concentration Risk: {portfolio.concentration_risk_pct}%</p>
-              <p>VaR 95: {portfolio.value_at_risk_95}</p>
-              {portfolio.recommendations.map((r) => (
-                <p key={r}>- {r}</p>
-              ))}
-            </div>
-          ) : null}
-        </SectionCard>
+          <ul className="checklist">
+            {portfolio.recommendations.map((x) => (
+              <li key={x}>{x}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  );
 
-        <SectionCard title="Execution Desk" subtitle="Paper and live mode are isolated">
-          <div className="form-grid">
-            <div className="mode-toggle">
+  const renderExecution = () => (
+    <>
+      <section className="panel panel-wide">
+        <h2>Execution Console</h2>
+        <div className="controls-grid">
+          <div className="toggle-row">
+            <button className={mode === "paper" ? "active" : ""} onClick={() => setMode("paper")} type="button">Paper</button>
+            <button className={mode === "live" ? "active" : ""} onClick={() => setMode("live")} type="button">Live</button>
+          </div>
+          <label>
+            Quantity
+            <input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value || 1))} />
+          </label>
+          <label>
+            Planned Side
+            <input value={analysis?.trade_plan.action.toUpperCase() ?? "BUY"} readOnly />
+          </label>
+          <button onClick={placeOrder} disabled={loading}>Place Order</button>
+        </div>
+        {orderMsg ? <p className="muted">{orderMsg}</p> : null}
+      </section>
+    </>
+  );
+
+  const renderChat = () => (
+    <>
+      <section className="panel panel-wide">
+        <h2>Market Intelligence Q&A</h2>
+        <div className="controls-grid">
+          <label className="span-2">
+            Question
+            <textarea rows={5} value={question} onChange={(e) => setQuestion(e.target.value)} />
+          </label>
+          <button onClick={askChat} disabled={loading}>{loading ? "Thinking..." : "Ask"}</button>
+        </div>
+        {chatAnswer ? <div className="answer-box">{chatAnswer}</div> : null}
+      </section>
+    </>
+  );
+
+  return (
+    <div className="terminal-bg">
+      <div className="glow g1" />
+      <div className="glow g2" />
+
+      <div className="layout">
+        <aside className="sidebar">
+          <div className="brand">
+            <h1>Vyoma Trade AI</h1>
+            <p>Indian Market Multi-Agent Desk</p>
+          </div>
+
+          <nav className="nav-list">
+            {VIEW_ITEMS.map((item) => (
               <button
-                className={mode === "paper" ? "active" : ""}
-                onClick={() => setMode("paper")}
+                key={item.key}
+                className={`nav-item ${view === item.key ? "current" : ""}`}
+                onClick={() => setView(item.key)}
                 type="button"
               >
-                Paper
+                <strong>{item.label}</strong>
+                <span>{item.hint}</span>
               </button>
-              <button
-                className={mode === "live" ? "active" : ""}
-                onClick={() => setMode("live")}
-                type="button"
-              >
-                Live
-              </button>
+            ))}
+          </nav>
+
+          <div className="side-card">
+            <h4>System Status</h4>
+            <button onClick={refreshHealth} type="button">Check Backend</button>
+            <p className="status-line">API: {health}</p>
+            <p className="status-line">Mode: {mode.toUpperCase()}</p>
+            <p className="status-line">Symbol: {symbol}</p>
+          </div>
+        </aside>
+
+        <main className="workspace">
+          <header className="workspace-head">
+            <div>
+              <h2>{VIEW_ITEMS.find((x) => x.key === view)?.label}</h2>
+              <p>{VIEW_ITEMS.find((x) => x.key === view)?.hint}</p>
             </div>
-            <label>
-              Quantity
-              <input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value || 1))} />
-            </label>
-            <button onClick={placeOrder} disabled={loading}>
-              Place Order
-            </button>
-          </div>
-          {orderMsg ? <div className="result"><p>{orderMsg}</p></div> : null}
-        </SectionCard>
 
-        <SectionCard title="Market Intelligence Chat" subtitle="Q&A for setup quality, risk, and scenario planning">
-          <div className="form-grid">
-            <label>
-              Question
-              <textarea value={question} onChange={(e) => setQuestion(e.target.value)} rows={4} />
-            </label>
-            <button onClick={askChat} disabled={loading}>
-              Ask
-            </button>
-          </div>
-          {chatAnswer ? <div className="result"><p>{chatAnswer}</p></div> : null}
-        </SectionCard>
-      </main>
+            <form className="quick-form" onSubmit={runAnalysis}>
+              <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
+                <option value="NIFTY">NIFTY</option>
+                <option value="BANKNIFTY">BANKNIFTY</option>
+                <option value="SENSEX">SENSEX</option>
+                <option value="RELIANCE">RELIANCE</option>
+                <option value="TCS">TCS</option>
+              </select>
 
-      {error ? <aside className="error">{error}</aside> : null}
+              <select value={segment} onChange={(e) => setSegment(e.target.value)}>
+                <option value="intraday_options">Intraday Index Options</option>
+                <option value="stock_options">Stock Options</option>
+                <option value="equity">Equity</option>
+                <option value="swing_stock">Swing Stock</option>
+              </select>
+
+              <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="1d">1d</option>
+              </select>
+
+              <label className="check-inline">
+                <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+                WhatsApp
+              </label>
+
+              <button type="submit" disabled={loading}>{loading ? "Analyzing..." : "Run Analysis"}</button>
+            </form>
+          </header>
+
+          <section className="workspace-grid">
+            {view === "dashboard" ? renderDashboard() : null}
+            {view === "options" ? renderOptionsDesk() : null}
+            {view === "strategy" ? renderStrategyLab() : null}
+            {view === "portfolio" ? renderPortfolio() : null}
+            {view === "execution" ? renderExecution() : null}
+            {view === "chat" ? renderChat() : null}
+          </section>
+        </main>
+      </div>
+
+      {error ? <aside className="error-toast">{error}</aside> : null}
     </div>
   );
 }

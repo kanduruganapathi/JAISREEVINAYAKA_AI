@@ -58,6 +58,38 @@ class TradePlan(BaseModel):
     rationale: str
 
 
+class TimeframeBias(BaseModel):
+    timeframe: str
+    bias: Literal["bullish", "bearish", "neutral"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    note: str
+
+
+class StrategyIdea(BaseModel):
+    name: str
+    instrument: str
+    direction: Literal["bullish", "bearish", "neutral"]
+    setup: str
+    entry_trigger: str
+    stop_rule: str
+    targets: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    timeframe: str
+
+
+class MarketStructureSnapshot(BaseModel):
+    trend: str
+    bos: str
+    choch: str
+    support: list[float] = Field(default_factory=list)
+    resistance: list[float] = Field(default_factory=list)
+    premium_zone: dict[str, float] | None = None
+    discount_zone: dict[str, float] | None = None
+    liquidity_sweeps: list[dict[str, Any]] = Field(default_factory=list)
+    fvg_zones: list[dict[str, Any]] = Field(default_factory=list)
+    order_blocks: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class AnalysisResponse(BaseModel):
     symbol: str
     segment: str
@@ -66,5 +98,10 @@ class AnalysisResponse(BaseModel):
     consensus_bias: str
     trade_plan: TradePlan
     risk: RiskSnapshot
+    indicator_snapshot: dict[str, float] = Field(default_factory=dict)
+    timeframe_biases: list[TimeframeBias] = Field(default_factory=list)
+    market_structure: MarketStructureSnapshot | None = None
+    strategy_ideas: list[StrategyIdea] = Field(default_factory=list)
+    execution_checklist: list[str] = Field(default_factory=list)
     signals: list[AgentSignal]
     timestamp: str
