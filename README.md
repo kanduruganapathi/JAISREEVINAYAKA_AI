@@ -38,6 +38,12 @@ uv sync
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+`MARKET_DATA_MODE` controls candle source:
+
+- `auto` (default): try live Yahoo candles first, fallback to synthetic
+- `live`: live candles only
+- `synthetic`: deterministic synthetic candles (offline/testing)
+
 ### 2) Frontend
 
 ```bash

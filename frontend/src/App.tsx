@@ -39,7 +39,10 @@ type StrategyName =
   | "fvg_ob_retest"
   | "volume_displacement_breakout"
   | "premium_discount_reversion"
-  | "hybrid_confluence_intraday";
+  | "hybrid_confluence_intraday"
+  | "trend_pullback_confluence"
+  | "regime_adaptive_breakout"
+  | "liquidity_trap_reversal";
 type StrategyParamMap = Record<string, number>;
 
 type StrategyTemplate = {
@@ -60,10 +63,10 @@ const STRATEGY_TEMPLATES: Record<StrategyName, StrategyTemplate> = {
       { key: "min_histogram_strength", label: "Min Histogram", min: 0, max: 2, step: 0.01 },
     ],
     defaults: {
-      bull_rsi_min: 48,
-      bear_rsi_max: 52,
+      bull_rsi_min: 52,
+      bear_rsi_max: 48,
       require_displacement: 1,
-      min_histogram_strength: 0.01,
+      min_histogram_strength: 0.03,
     },
   },
   ema_cross: {
@@ -184,14 +187,61 @@ const STRATEGY_TEMPLATES: Record<StrategyName, StrategyTemplate> = {
     defaults: {
       news_score: 0.5,
       fundamental_score: 0.5,
-      long_threshold: 3.4,
-      short_threshold: 3.4,
+      long_threshold: 3.8,
+      short_threshold: 3.8,
+    },
+  },
+  trend_pullback_confluence: {
+    label: "Trend Pullback Confluence",
+    description: "Trade pullbacks into EMA20 in strong trend with structure + momentum confirmation.",
+    params: [
+      { key: "pullback_atr", label: "Pullback ATR Dist", min: 0.1, max: 3, step: 0.05 },
+      { key: "min_volume_ratio", label: "Min Volume Ratio", min: 0.3, max: 4, step: 0.05 },
+      { key: "max_rsi_long", label: "Max RSI Long", min: 40, max: 95, step: 1 },
+      { key: "min_rsi_short", label: "Min RSI Short", min: 5, max: 60, step: 1 },
+    ],
+    defaults: {
+      pullback_atr: 1,
+      min_volume_ratio: 0.8,
+      max_rsi_long: 68,
+      min_rsi_short: 32,
+    },
+  },
+  regime_adaptive_breakout: {
+    label: "Regime Adaptive Breakout",
+    description: "Switches between breakout continuation and range reversion by detected regime.",
+    params: [
+      { key: "breakout_lookback", label: "Breakout Lookback", min: 10, max: 160, step: 1 },
+      { key: "breakout_buffer_bps", label: "Breakout Buffer (bps)", min: 0, max: 120, step: 1 },
+      { key: "volume_multiplier", label: "Volume Multiplier", min: 0.4, max: 5, step: 0.05 },
+      { key: "trend_regime_threshold", label: "Trend Regime Threshold", min: -1, max: 5, step: 0.1 },
+    ],
+    defaults: {
+      breakout_lookback: 22,
+      breakout_buffer_bps: 5,
+      volume_multiplier: 1.2,
+      trend_regime_threshold: 0.9,
+    },
+  },
+  liquidity_trap_reversal: {
+    label: "Liquidity Trap Reversal",
+    description: "Captures trap moves after sweep + rejection wick + CHOCH/BOS validation.",
+    params: [
+      { key: "min_wick_ratio", label: "Min Wick Ratio", min: 0.1, max: 0.95, step: 0.01 },
+      { key: "min_body_atr_ratio", label: "Min Body/ATR", min: 0, max: 3, step: 0.05 },
+    ],
+    defaults: {
+      min_wick_ratio: 0.32,
+      min_body_atr_ratio: 0.2,
     },
   },
 };
 
 const STRATEGY_ORDER: StrategyName[] = [
   "hybrid_confluence_intraday",
+  "regime_adaptive_breakout",
+  "trend_pullback_confluence",
+  "liquidity_trap_reversal",
   "smc_liquidity_reversal",
   "fvg_ob_retest",
   "volume_displacement_breakout",
@@ -277,9 +327,9 @@ function recommendedStrategyForPick(
   ) {
     return "hybrid_confluence_intraday";
   }
-  if (item.breakout.score >= 0.72 && item.technical.score >= 0.6) return "volume_displacement_breakout";
-  if (item.technical.score >= 0.62 && item.breakout.score >= 0.55) return "fvg_ob_retest";
-  if (item.news.signal !== item.technical.signal && item.technical.signal !== "neutral") return "smc_liquidity_reversal";
+  if (item.breakout.score >= 0.72 && item.technical.score >= 0.6) return "regime_adaptive_breakout";
+  if (item.technical.score >= 0.62 && item.breakout.score >= 0.55) return "trend_pullback_confluence";
+  if (item.news.signal !== item.technical.signal && item.technical.signal !== "neutral") return "liquidity_trap_reversal";
   if (item.bias === "neutral") return "rsi_reversion";
   return "smc_breakout";
 }

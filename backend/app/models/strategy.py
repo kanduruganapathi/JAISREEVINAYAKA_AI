@@ -16,6 +16,9 @@ class StrategyRule(BaseModel):
         "volume_displacement_breakout",
         "premium_discount_reversion",
         "hybrid_confluence_intraday",
+        "trend_pullback_confluence",
+        "regime_adaptive_breakout",
+        "liquidity_trap_reversal",
     ]
     params: dict[str, float | int | str] = Field(default_factory=dict)
 

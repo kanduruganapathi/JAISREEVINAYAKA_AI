@@ -140,6 +140,48 @@ class StrategyEngine:
             return False
         return min(abs(price - lv) / max(price, 1e-9) for lv in levels) <= threshold
 
+    @staticmethod
+    def _wick_profile(candle: Candle) -> tuple[float, float]:
+        rng = max(candle.high - candle.low, 1e-9)
+        upper_wick = max(0.0, candle.high - max(candle.open, candle.close))
+        lower_wick = max(0.0, min(candle.open, candle.close) - candle.low)
+        return upper_wick / rng, lower_wick / rng
+
+    @staticmethod
+    def _regime_score(
+        ema20: float,
+        ema50: float,
+        atr: float,
+        hist: float,
+        rsi: float,
+        bos: str,
+        choch: str,
+    ) -> float:
+        ema_gap = abs(ema20 - ema50) / max(atr, 1e-9)
+        score = 0.0
+        if ema_gap >= 1.3:
+            score += 1.25
+        elif ema_gap >= 0.9:
+            score += 0.9
+        elif ema_gap <= 0.35:
+            score -= 0.8
+
+        if abs(hist) >= 0.08:
+            score += 0.65
+        elif abs(hist) <= 0.02:
+            score -= 0.45
+
+        if rsi >= 58 or rsi <= 42:
+            score += 0.35
+        else:
+            score -= 0.2
+
+        if "bos" in bos:
+            score += 0.45
+        if "choch" in choch:
+            score += 0.25
+        return score
+
     def generate_signal(self, candles: list[Candle], rule: StrategyRule) -> str:
         if len(candles) < 60:
             return "flat"
@@ -167,6 +209,9 @@ class StrategyEngine:
         order_blocks = smc.get("order_blocks", [])
         sweeps = smc.get("liquidity_sweeps", [])
         latest_sweep = str(sweeps[-1].get("type", "")) if sweeps else ""
+        upper_wick_ratio, lower_wick_ratio = self._wick_profile(candles[-1])
+        regime_score = self._regime_score(ema20, ema50, atr, hist, rsi, bos, choch)
+        is_choppy = regime_score <= 0.0 and 44 <= rsi <= 56 and abs(hist) <= 0.03
 
         lookback_window = self._param_int(rule, "zone_recent_window", 28, min_value=8, max_value=100)
         min_zone_index = max(0, len(candles) - lookback_window)
@@ -176,6 +221,8 @@ class StrategyEngine:
         in_bearish_ob = self._in_any_zone(last, order_blocks, {"bearish_ob"}, min_zone_index)
 
         if rule.name == "ema_cross":
+            if is_choppy:
+                return "flat"
             fast_ema_period = self._param_int(rule, "fast_ema", 20, min_value=5, max_value=120)
             slow_ema_period = self._param_int(rule, "slow_ema", 50, min_value=10, max_value=240)
             if fast_ema_period >= slow_ema_period:
@@ -190,8 +237,9 @@ class StrategyEngine:
                 self._param_int(rule, "confirm_price_above_ema", 1, min_value=0, max_value=1) == 1
             )
             min_gap_bps = self._param_float(rule, "trend_gap_bps", 0.0, min_value=0.0, max_value=200.0)
+            min_regime = self._param_float(rule, "min_regime_score", 0.75, min_value=-1.0, max_value=4.0)
             gap_bps = abs(fast_ema - slow_ema) / max(last, 1e-9) * 10000.0
-            if gap_bps < min_gap_bps:
+            if gap_bps < min_gap_bps or regime_score < min_regime:
                 return "flat"
 
             if fast_ema > slow_ema and (not require_price_confirm or last > fast_ema):
@@ -215,8 +263,11 @@ class StrategyEngine:
             return "flat"
 
         if rule.name == "multi_timeframe_breakout":
+            if regime_score < 0.35:
+                return "flat"
             lookback = self._param_int(rule, "breakout_lookback", 20, min_value=10, max_value=120)
             buffer_bps = self._param_float(rule, "breakout_buffer_bps", 0.0, min_value=0.0, max_value=60.0)
+            volume_mult = self._param_float(rule, "volume_multiplier", 1.1, min_value=0.5, max_value=5.0)
             if len(candles) < lookback + 1:
                 return "flat"
             high_lookback = max(c.high for c in candles[-lookback:])
@@ -224,9 +275,9 @@ class StrategyEngine:
             up_trigger = high_lookback * (1 + buffer_bps / 10000.0)
             down_trigger = low_lookback * (1 - buffer_bps / 10000.0)
 
-            if last >= up_trigger:
+            if last >= up_trigger and volume_ratio >= volume_mult:
                 return "long"
-            if last <= down_trigger:
+            if last <= down_trigger and volume_ratio >= volume_mult:
                 return "short"
             return "flat"
 
@@ -235,6 +286,10 @@ class StrategyEngine:
             rsi_floor_long = self._param_float(rule, "long_rsi_floor", 32.0, min_value=5.0, max_value=65.0)
             rsi_cap_short = self._param_float(rule, "short_rsi_cap", 68.0, min_value=35.0, max_value=95.0)
             min_body_atr = self._param_float(rule, "min_body_atr_ratio", 0.45, min_value=0.0, max_value=4.0)
+            min_wick_ratio = self._param_float(rule, "min_rejection_wick_ratio", 0.2, min_value=0.0, max_value=0.9)
+            min_regime = self._param_float(rule, "min_regime_score", 0.15, min_value=-1.0, max_value=4.0)
+            if regime_score < min_regime:
+                return "flat"
 
             bullish_shift = choch == "bullish_choch" or bos == "bullish_bos"
             bearish_shift = choch == "bearish_choch" or bos == "bearish_bos"
@@ -248,6 +303,7 @@ class StrategyEngine:
                 and rsi >= rsi_floor_long
                 and hist >= 0
                 and body_atr_ratio >= min_body_atr
+                and lower_wick_ratio >= min_wick_ratio
                 and last >= ema20
             ):
                 return "long"
@@ -257,14 +313,19 @@ class StrategyEngine:
                 and rsi <= rsi_cap_short
                 and hist <= 0
                 and body_atr_ratio >= min_body_atr
+                and upper_wick_ratio >= min_wick_ratio
                 and last <= ema20
             ):
                 return "short"
             return "flat"
 
         if rule.name == "fvg_ob_retest":
+            if regime_score < 0.2:
+                return "flat"
             require_displacement = self._param_int(rule, "require_displacement", 1, min_value=0, max_value=1) == 1
             min_body_atr = self._param_float(rule, "min_body_atr_ratio", 0.35, min_value=0.0, max_value=4.0)
+            max_rsi_long = self._param_float(rule, "max_rsi_long", 67.0, min_value=40.0, max_value=95.0)
+            min_rsi_short = self._param_float(rule, "min_rsi_short", 33.0, min_value=5.0, max_value=60.0)
             bullish_retest = in_bullish_fvg or in_bullish_ob
             bearish_retest = in_bearish_fvg or in_bearish_ob
             bullish_displacement = (not require_displacement) or body_atr_ratio >= min_body_atr
@@ -274,7 +335,7 @@ class StrategyEngine:
                 bullish_retest
                 and (trend == "uptrend" or bos == "bullish_bos")
                 and hist >= 0
-                and rsi <= 68
+                and rsi <= max_rsi_long
                 and bullish_displacement
             ):
                 return "long"
@@ -282,7 +343,7 @@ class StrategyEngine:
                 bearish_retest
                 and (trend == "downtrend" or bos == "bearish_bos")
                 and hist <= 0
-                and rsi >= 32
+                and rsi >= min_rsi_short
                 and bearish_displacement
             ):
                 return "short"
@@ -293,6 +354,9 @@ class StrategyEngine:
             volume_mult = self._param_float(rule, "volume_multiplier", 1.35, min_value=0.5, max_value=5.0)
             buffer_bps = self._param_float(rule, "breakout_buffer_bps", 5.0, min_value=0.0, max_value=80.0)
             min_body_atr = self._param_float(rule, "min_body_atr_ratio", 0.65, min_value=0.0, max_value=5.0)
+            min_regime = self._param_float(rule, "min_regime_score", 0.9, min_value=-1.0, max_value=4.0)
+            if regime_score < min_regime:
+                return "flat"
             if len(candles) < lookback + 2:
                 return "flat"
             high_ref = max(c.high for c in candles[-(lookback + 1) : -1])
@@ -324,6 +388,9 @@ class StrategyEngine:
             long_rsi_max = self._param_float(rule, "long_rsi_max", 45.0, min_value=10.0, max_value=65.0)
             short_rsi_min = self._param_float(rule, "short_rsi_min", 55.0, min_value=35.0, max_value=95.0)
             near_level_threshold = self._param_float(rule, "level_threshold", 0.0035, min_value=0.001, max_value=0.03)
+            max_regime = self._param_float(rule, "max_regime_score", 1.2, min_value=-1.0, max_value=5.0)
+            if regime_score > max_regime:
+                return "flat"
 
             in_discount = self._in_price_zone(last, discount_zone)
             in_premium = self._in_price_zone(last, premium_zone)
@@ -353,6 +420,9 @@ class StrategyEngine:
             fundamental_score = self._param_float(rule, "fundamental_score", 0.5, min_value=0.0, max_value=1.0)
             long_threshold = self._param_float(rule, "long_threshold", 3.4, min_value=1.0, max_value=10.0)
             short_threshold = self._param_float(rule, "short_threshold", 3.4, min_value=1.0, max_value=10.0)
+            min_regime = self._param_float(rule, "min_regime_score", 0.4, min_value=-1.0, max_value=5.0)
+            if regime_score < min_regime:
+                return "flat"
 
             long_score = 0.0
             short_score = 0.0
@@ -397,6 +467,11 @@ class StrategyEngine:
             short_score += max(0.0, (0.5 - news_score) * 3.0)
             long_score += max(0.0, (fundamental_score - 0.5) * 2.5)
             short_score += max(0.0, (0.5 - fundamental_score) * 2.5)
+            if regime_score >= 1.5:
+                if ema20 > ema50:
+                    long_score += 0.35
+                elif ema20 < ema50:
+                    short_score += 0.35
 
             if long_score >= long_threshold and long_score > short_score + 0.35:
                 return "long"
@@ -404,13 +479,113 @@ class StrategyEngine:
                 return "short"
             return "flat"
 
+        if rule.name == "trend_pullback_confluence":
+            if regime_score < 0.8:
+                return "flat"
+            pullback_atr = self._param_float(rule, "pullback_atr", 1.0, min_value=0.1, max_value=3.0)
+            min_volume_ratio = self._param_float(rule, "min_volume_ratio", 0.8, min_value=0.3, max_value=4.0)
+            max_rsi_long = self._param_float(rule, "max_rsi_long", 68.0, min_value=40.0, max_value=95.0)
+            min_rsi_short = self._param_float(rule, "min_rsi_short", 32.0, min_value=5.0, max_value=60.0)
+            proximity_ema20 = abs(last - ema20) / max(atr, 1e-9)
+
+            if (
+                trend == "uptrend"
+                and ema20 >= ema50
+                and proximity_ema20 <= pullback_atr
+                and hist >= 0
+                and rsi <= max_rsi_long
+                and (bos == "bullish_bos" or choch == "bullish_choch")
+                and volume_ratio >= min_volume_ratio
+            ):
+                return "long"
+            if (
+                trend == "downtrend"
+                and ema20 <= ema50
+                and proximity_ema20 <= pullback_atr
+                and hist <= 0
+                and rsi >= min_rsi_short
+                and (bos == "bearish_bos" or choch == "bearish_choch")
+                and volume_ratio >= min_volume_ratio
+            ):
+                return "short"
+            return "flat"
+
+        if rule.name == "regime_adaptive_breakout":
+            lookback = self._param_int(rule, "breakout_lookback", 22, min_value=10, max_value=160)
+            buffer_bps = self._param_float(rule, "breakout_buffer_bps", 5.0, min_value=0.0, max_value=120.0)
+            volume_mult = self._param_float(rule, "volume_multiplier", 1.2, min_value=0.4, max_value=5.0)
+            trend_regime_threshold = self._param_float(rule, "trend_regime_threshold", 0.9, min_value=-1.0, max_value=5.0)
+            if len(candles) < lookback + 2:
+                return "flat"
+
+            high_ref = max(c.high for c in candles[-(lookback + 1) : -1])
+            low_ref = min(c.low for c in candles[-(lookback + 1) : -1])
+            up_trigger = high_ref * (1 + buffer_bps / 10000.0)
+            down_trigger = low_ref * (1 - buffer_bps / 10000.0)
+
+            if regime_score >= trend_regime_threshold:
+                if (
+                    last >= up_trigger
+                    and volume_ratio >= volume_mult
+                    and ema20 >= ema50
+                    and hist >= 0
+                ):
+                    return "long"
+                if (
+                    last <= down_trigger
+                    and volume_ratio >= volume_mult
+                    and ema20 <= ema50
+                    and hist <= 0
+                ):
+                    return "short"
+                return "flat"
+
+            # Range/chop regime: revert from premium/discount zones with structure hint.
+            in_discount = self._in_price_zone(last, discount_zone)
+            in_premium = self._in_price_zone(last, premium_zone)
+            if in_discount and (latest_sweep == "sell_side_sweep" or choch == "bullish_choch") and rsi <= 47:
+                return "long"
+            if in_premium and (latest_sweep == "buy_side_sweep" or choch == "bearish_choch") and rsi >= 53:
+                return "short"
+            return "flat"
+
+        if rule.name == "liquidity_trap_reversal":
+            min_wick_ratio = self._param_float(rule, "min_wick_ratio", 0.32, min_value=0.1, max_value=0.95)
+            min_body_atr = self._param_float(rule, "min_body_atr_ratio", 0.2, min_value=0.0, max_value=3.0)
+            if body_atr_ratio < min_body_atr:
+                return "flat"
+
+            if (
+                latest_sweep == "sell_side_sweep"
+                and lower_wick_ratio >= min_wick_ratio
+                and (choch == "bullish_choch" or bos == "bullish_bos")
+                and hist >= -0.01
+                and last >= ema20
+            ):
+                return "long"
+            if (
+                latest_sweep == "buy_side_sweep"
+                and upper_wick_ratio >= min_wick_ratio
+                and (choch == "bearish_choch" or bos == "bearish_bos")
+                and hist <= 0.01
+                and last <= ema20
+            ):
+                return "short"
+            return "flat"
+
         # smc_breakout
+        if is_choppy:
+            return "flat"
         bull_rsi_min = self._param_float(rule, "bull_rsi_min", 48.0, min_value=20.0, max_value=80.0)
         bear_rsi_max = self._param_float(rule, "bear_rsi_max", 52.0, min_value=20.0, max_value=80.0)
         require_displacement = (
             self._param_int(rule, "require_displacement", 1, min_value=0, max_value=1) == 1
         )
         min_hist = self._param_float(rule, "min_histogram_strength", 0.01, min_value=0.0, max_value=10.0)
+        min_volume_ratio = self._param_float(rule, "min_volume_ratio", 0.95, min_value=0.3, max_value=5.0)
+        min_regime = self._param_float(rule, "min_regime_score", 0.55, min_value=-1.0, max_value=5.0)
+        if regime_score < min_regime:
+            return "flat"
 
         bullish_displacement = not require_displacement or hist >= min_hist
         bearish_displacement = not require_displacement or hist <= -min_hist
@@ -420,6 +595,7 @@ class StrategyEngine:
             and smc["trend"] == "uptrend"
             and rsi >= bull_rsi_min
             and bullish_displacement
+            and volume_ratio >= min_volume_ratio
         ):
             return "long"
         if (
@@ -427,6 +603,7 @@ class StrategyEngine:
             and smc["trend"] == "downtrend"
             and rsi <= bear_rsi_max
             and bearish_displacement
+            and volume_ratio >= min_volume_ratio
         ):
             return "short"
         return "flat"

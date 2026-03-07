@@ -35,16 +35,18 @@ class AutoPaperWorkflowService:
     def _strategy_presets() -> dict[str, dict[str, float]]:
         return {
             "smc_breakout": {
-                "bull_rsi_min": 48.0,
-                "bear_rsi_max": 52.0,
+                "bull_rsi_min": 52.0,
+                "bear_rsi_max": 48.0,
                 "require_displacement": 1.0,
-                "min_histogram_strength": 0.01,
+                "min_histogram_strength": 0.03,
+                "min_regime_score": 0.55,
             },
             "ema_cross": {
                 "fast_ema": 18.0,
                 "slow_ema": 50.0,
                 "confirm_price_above_ema": 1.0,
                 "trend_gap_bps": 6.0,
+                "min_regime_score": 0.75,
             },
             "rsi_reversion": {
                 "oversold": 30.0,
@@ -55,17 +57,21 @@ class AutoPaperWorkflowService:
             "multi_timeframe_breakout": {
                 "breakout_lookback": 20.0,
                 "breakout_buffer_bps": 5.0,
+                "volume_multiplier": 1.1,
             },
             "smc_liquidity_reversal": {
                 "require_choch": 1.0,
                 "long_rsi_floor": 34.0,
                 "short_rsi_cap": 66.0,
                 "min_body_atr_ratio": 0.45,
+                "min_rejection_wick_ratio": 0.2,
                 "zone_recent_window": 30.0,
             },
             "fvg_ob_retest": {
                 "require_displacement": 1.0,
                 "min_body_atr_ratio": 0.35,
+                "max_rsi_long": 67.0,
+                "min_rsi_short": 33.0,
                 "zone_recent_window": 30.0,
             },
             "volume_displacement_breakout": {
@@ -73,24 +79,55 @@ class AutoPaperWorkflowService:
                 "volume_multiplier": 1.35,
                 "breakout_buffer_bps": 5.0,
                 "min_body_atr_ratio": 0.65,
+                "min_regime_score": 0.9,
             },
             "premium_discount_reversion": {
                 "long_rsi_max": 45.0,
                 "short_rsi_min": 55.0,
                 "level_threshold": 0.0035,
+                "max_regime_score": 1.2,
                 "zone_recent_window": 30.0,
             },
             "hybrid_confluence_intraday": {
                 "news_score": 0.5,
                 "fundamental_score": 0.5,
-                "long_threshold": 3.4,
-                "short_threshold": 3.4,
+                "long_threshold": 3.8,
+                "short_threshold": 3.8,
+                "min_regime_score": 0.4,
                 "zone_recent_window": 30.0,
+            },
+            "trend_pullback_confluence": {
+                "pullback_atr": 1.0,
+                "min_volume_ratio": 0.8,
+                "max_rsi_long": 68.0,
+                "min_rsi_short": 32.0,
+            },
+            "regime_adaptive_breakout": {
+                "breakout_lookback": 22.0,
+                "breakout_buffer_bps": 5.0,
+                "volume_multiplier": 1.2,
+                "trend_regime_threshold": 0.9,
+            },
+            "liquidity_trap_reversal": {
+                "min_wick_ratio": 0.32,
+                "min_body_atr_ratio": 0.2,
             },
         }
 
     def _strategy_params_for(self, item: StockScanResult, strategy_name: str) -> dict[str, float]:
         params = dict(self._strategy_presets()[strategy_name])
+        params.update(
+            {
+                "stop_atr_mult": 1.1,
+                "take_profit_rr": 1.8,
+                "trail_atr_mult": 0.9,
+                "risk_pct": 1.0,
+                "max_notional_pct": 0.25,
+                "cooldown_bars": 3.0,
+                "max_hold_bars": 28.0,
+                "min_hold_bars": 2.0,
+            }
+        )
         if strategy_name == "hybrid_confluence_intraday":
             params["news_score"] = float(item.news.score)
             params["fundamental_score"] = float(item.fundamental.score)
@@ -102,8 +139,8 @@ class AutoPaperWorkflowService:
                 or item.breakout.score < 0.52
             )
             if weak_quality:
-                params["long_threshold"] = 3.8
-                params["short_threshold"] = 3.8
+                params["long_threshold"] = 4.1
+                params["short_threshold"] = 4.1
         return params
 
     def _choose_strategy(self, item: StockScanResult) -> tuple[str, dict[str, float]]:
@@ -117,11 +154,11 @@ class AutoPaperWorkflowService:
             return name, self._strategy_params_for(item, name)
 
         if item.breakout.score >= 0.72 and item.technical.score >= 0.6:
-            name = "volume_displacement_breakout"
+            name = "regime_adaptive_breakout"
             return name, self._strategy_params_for(item, name)
 
         if item.technical.score >= 0.62 and item.breakout.score >= 0.55:
-            name = "fvg_ob_retest"
+            name = "trend_pullback_confluence"
             return name, self._strategy_params_for(item, name)
 
         if item.action == "watch" and item.bias == "neutral":
@@ -129,7 +166,7 @@ class AutoPaperWorkflowService:
             return name, self._strategy_params_for(item, name)
 
         if item.news.signal != item.technical.signal and item.technical.signal != "neutral":
-            name = "smc_liquidity_reversal"
+            name = "liquidity_trap_reversal"
             return name, self._strategy_params_for(item, name)
 
         if item.technical.score >= 0.65:
@@ -144,6 +181,9 @@ class AutoPaperWorkflowService:
         order = [
             preferred_name,
             "hybrid_confluence_intraday",
+            "regime_adaptive_breakout",
+            "trend_pullback_confluence",
+            "liquidity_trap_reversal",
             "volume_displacement_breakout",
             "fvg_ob_retest",
             "smc_liquidity_reversal",

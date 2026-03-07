@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_name: str = Field(default="Multi-Agent Trading Platform", alias="APP_NAME")
     api_port: int = Field(default=8000, alias="API_PORT")
     frontend_origin: str = Field(default="http://localhost:5173", alias="FRONTEND_ORIGIN")
+    market_data_mode: str = Field(default="auto", alias="MARKET_DATA_MODE")
 
     groww_api_base_url: str = Field(default="https://api.groww.in", alias="GROWW_API_BASE_URL")
     groww_totp_token: str | None = Field(default=None, alias="GROWW_TOTP_TOKEN")
