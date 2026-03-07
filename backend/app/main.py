@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import analysis, backtest, chat, health, portfolio, trading
+from app.api.routers import analysis, backtest, chat, health, portfolio, sandbox, trading
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
@@ -24,3 +24,4 @@ app.include_router(backtest.router, prefix="/api/v1", tags=["backtest"])
 app.include_router(trading.router, prefix="/api/v1", tags=["trading"])
 app.include_router(portfolio.router, prefix="/api/v1", tags=["portfolio"])
 app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
+app.include_router(sandbox.router, tags=["compat"])
