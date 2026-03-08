@@ -625,7 +625,13 @@ export default function App() {
         ? latestSweep.type.replace(/_/g, " ")
         : "none";
 
-    const directionalAction = analysis.trade_plan.action;
+    const consensusAction =
+      analysis.consensus_bias === "bullish"
+        ? "buy"
+        : analysis.consensus_bias === "bearish"
+          ? "sell"
+          : "hold";
+    const directionalAction = analysis.trade_plan.action === "hold" ? consensusAction : analysis.trade_plan.action;
     const decision = tradeQualification?.decision ?? "AVOID";
     const rr = analysis.risk.risk_reward_ratio;
     const ready =
@@ -634,14 +640,30 @@ export default function App() {
       rr >= 1.5 &&
       alignedTimeframes >= minAligned &&
       decision !== "AVOID";
+    const setupReady =
+      directionalAction !== "hold" &&
+      (hasLevels || analysis.score >= 0.55) &&
+      rr >= 1.15 &&
+      alignedTimeframes >= 1;
 
     let actionLabel = "WAIT / NO TRADE";
+    let readinessLabel: "READY" | "SETUP" | "WAIT" = "WAIT";
     let tone = "bias-neutral";
     if (ready && directionalAction === "buy") {
       actionLabel = "EXECUTE LONG";
+      readinessLabel = "READY";
       tone = "bias-bull";
     } else if (ready && directionalAction === "sell") {
       actionLabel = "EXECUTE SHORT";
+      readinessLabel = "READY";
+      tone = "bias-bear";
+    } else if (setupReady && directionalAction === "buy") {
+      actionLabel = "PREPARE LONG";
+      readinessLabel = "SETUP";
+      tone = "bias-bull";
+    } else if (setupReady && directionalAction === "sell") {
+      actionLabel = "PREPARE SHORT";
+      readinessLabel = "SETUP";
       tone = "bias-bear";
     }
 
@@ -649,6 +671,12 @@ export default function App() {
     const stop = fmt(analysis.trade_plan.stop_loss);
     const target = fmt(analysis.trade_plan.target);
     const suggestedQtyText = suggestedQty > 0 ? `${suggestedQty}` : "as per risk";
+    const blockers: string[] = [];
+    if (directionalAction === "hold") blockers.push("No directional bias yet.");
+    if (!hasLevels) blockers.push("Entry / stop / target levels are not fully available.");
+    if (rr < 1.5) blockers.push(`Risk-reward is below ready threshold (current ${fmt(rr)}, need >= 1.50).`);
+    if (alignedTimeframes < minAligned) blockers.push(`Timeframe alignment is weak (${alignedTimeframes}/${minAligned}).`);
+    if (decision === "AVOID") blockers.push("Qualification engine currently marks this setup as AVOID.");
 
     const steps =
       directionalAction === "buy"
@@ -673,13 +701,16 @@ export default function App() {
 
     return {
       actionLabel,
+      readinessLabel,
       tone,
       ready,
+      setupReady,
       hasLevels,
       alignedTimeframes,
       minAligned,
       sweepType,
       rr,
+      blockers,
       steps,
     };
   }, [analysis, tradeQualification, suggestedQty, timeframe]);
@@ -1190,7 +1221,7 @@ export default function App() {
           <div className="signal-board">
             <article className="signal-card">
               <label>Signal Readiness</label>
-              <strong>{actionableSignal?.ready ? "READY" : "WAIT"}</strong>
+              <strong>{actionableSignal?.readinessLabel ?? "WAIT"}</strong>
               <span className="muted">
                 Alignment {actionableSignal?.alignedTimeframes ?? 0}/{actionableSignal?.minAligned ?? 0}
               </span>
@@ -1220,6 +1251,16 @@ export default function App() {
               <li key={step}>{step}</li>
             ))}
           </ol>
+          {!!actionableSignal?.blockers.length && actionableSignal.readinessLabel !== "READY" ? (
+            <div className="warn-box">
+              <p><b>Signal blockers</b></p>
+              <ul className="checklist">
+                {actionableSignal.blockers.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="quick-actions">
             <button
               type="button"
@@ -1228,9 +1269,11 @@ export default function App() {
                 setMode("paper");
                 setView("execution");
               }}
-              disabled={!actionableSignal?.ready}
+              disabled={actionableSignal?.readinessLabel === "WAIT"}
             >
-              Open Execution with This Signal
+              {actionableSignal?.readinessLabel === "READY"
+                ? "Open Execution with This Signal"
+                : "Open Execution (Setup Mode)"}
             </button>
             <button
               type="button"
