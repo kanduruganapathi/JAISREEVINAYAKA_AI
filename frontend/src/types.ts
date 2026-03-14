@@ -194,6 +194,25 @@ export type StockScanResponse = {
     fundamental: { score: number; signal: Bias; summary: string; meta?: Record<string, string> };
     news: { score: number; signal: Bias; summary: string; meta?: Record<string, string> };
     technical_snapshot: Record<string, number>;
+    market_snapshot: {
+      live_price: number;
+      open_price: number;
+      close_price: number;
+      prev_close: number;
+      day_high: number;
+      day_low: number;
+      change_pct: number;
+      volume: number;
+    };
+    strategy_validation: {
+      strategy: string;
+      total_return_pct: number;
+      win_rate_pct: number;
+      sharpe: number;
+      trades: number;
+      status: "pass" | "watch" | "fail";
+      reason: string;
+    } | null;
     intraday_plan: {
       direction: "long" | "short" | "neutral";
       setup: string;

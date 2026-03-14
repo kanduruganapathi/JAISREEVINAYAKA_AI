@@ -1,24 +1,25 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 :root {
-  --bg-page: #f6f7f2;
-  --bg-alt: #edf1ea;
+  --bg-page: #f4f6f8;
+  --bg-alt: #e9eef3;
   --surface: #ffffff;
-  --surface-soft: #f8faf7;
-  --line: #dce4d8;
-  --line-strong: #c4d2c1;
-  --text: #1f2a23;
-  --muted: #6e7a70;
-  --brand: #158a64;
-  --brand-strong: #116f51;
-  --accent: #cf8a2d;
-  --bull: #19884f;
-  --bear: #c1544b;
-  --neutral: #7f8d82;
-  --warn-bg: #fff8ed;
-  --warn-line: #efc382;
-  --danger-bg: #fff2f1;
-  --danger-line: #eba39c;
+  --surface-soft: #f6f9fc;
+  --line: #d8e0ea;
+  --line-strong: #bcc9d9;
+  --text: #111827;
+  --muted: #5f6b7a;
+  --brand: #0f766e;
+  --brand-strong: #0b5f58;
+  --accent: #d97706;
+  --bull: #15803d;
+  --bear: #b91c1c;
+  --neutral: #64748b;
+  --warn-bg: #fff9ec;
+  --warn-line: #f3c46d;
+  --danger-bg: #fff4f4;
+  --danger-line: #efadad;
+  --shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 * {
@@ -27,11 +28,11 @@
 
 body {
   margin: 0;
-  font-family: "Manrope", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at 8% 12%, rgba(21, 138, 100, 0.1) 0%, transparent 32%),
-    radial-gradient(circle at 90% 8%, rgba(207, 138, 45, 0.1) 0%, transparent 25%),
+    radial-gradient(circle at 8% 12%, rgba(15, 118, 110, 0.12) 0%, transparent 32%),
+    radial-gradient(circle at 90% 8%, rgba(217, 119, 6, 0.1) 0%, transparent 25%),
     linear-gradient(160deg, var(--bg-page) 0%, var(--bg-alt) 100%);
 }
 
@@ -39,12 +40,12 @@ button,
 input,
 select,
 textarea {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: "Space Grotesk", sans-serif;
 }
 
 .pro-app {
   min-height: 100vh;
-  padding: 0.95rem;
+  padding: 1rem;
   position: relative;
 }
 
@@ -83,13 +84,14 @@ textarea {
 
 .masthead {
   border: 1px solid var(--line-strong);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--surface);
   padding: 0.95rem 1.05rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.8rem;
+  box-shadow: var(--shadow-soft);
 }
 
 .masthead-left .eyebrow {
@@ -135,13 +137,14 @@ textarea {
 .command-deck {
   margin-top: 0.72rem;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--surface);
   padding: 0.72rem;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.72rem;
   align-items: end;
+  box-shadow: var(--shadow-soft);
 }
 
 .analysis-form {
@@ -263,12 +266,13 @@ textarea {
 
 .navigation-rail {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--surface);
   padding: 0.6rem;
   position: sticky;
   top: 0.95rem;
   align-self: start;
+  box-shadow: var(--shadow-soft);
 }
 
 .nav-list {
@@ -324,18 +328,20 @@ textarea {
 
 .workspace-head {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--surface);
   padding: 0.82rem 0.9rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.6rem;
+  box-shadow: var(--shadow-soft);
 }
 
 .workspace-head h2 {
   margin: 0;
-  font-size: 1.14rem;
+  font-size: 1.2rem;
+  letter-spacing: 0.01em;
 }
 
 .workspace-head p {
@@ -370,9 +376,10 @@ textarea {
 
 .panel {
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface);
   padding: 0.76rem;
+  box-shadow: var(--shadow-soft);
 }
 
 .panel-wide {
@@ -387,11 +394,11 @@ textarea {
 }
 
 .panel h2 {
-  font-size: 1.03rem;
+  font-size: 1.08rem;
 }
 
 .panel h3 {
-  font-size: 0.92rem;
+  font-size: 0.96rem;
 }
 
 .panel p {

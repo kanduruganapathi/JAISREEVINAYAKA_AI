@@ -31,6 +31,27 @@ class IntradayPlan(BaseModel):
     rr_estimate: float = 0.0
 
 
+class MarketSnapshot(BaseModel):
+    live_price: float = 0.0
+    open_price: float = 0.0
+    close_price: float = 0.0
+    prev_close: float = 0.0
+    day_high: float = 0.0
+    day_low: float = 0.0
+    change_pct: float = 0.0
+    volume: float = 0.0
+
+
+class StrategyValidation(BaseModel):
+    strategy: str
+    total_return_pct: float = 0.0
+    win_rate_pct: float = 0.0
+    sharpe: float = 0.0
+    trades: int = 0
+    status: Literal["pass", "watch", "fail"] = "watch"
+    reason: str = ""
+
+
 class StockScanResult(BaseModel):
     symbol: str
     rank: int
@@ -42,6 +63,8 @@ class StockScanResult(BaseModel):
     fundamental: ScanFactor
     news: ScanFactor
     technical_snapshot: dict[str, float] = Field(default_factory=dict)
+    market_snapshot: MarketSnapshot = Field(default_factory=MarketSnapshot)
+    strategy_validation: StrategyValidation | None = None
     intraday_plan: IntradayPlan
 
 

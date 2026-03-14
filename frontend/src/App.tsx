@@ -312,6 +312,16 @@ function scoreBand(score: number): string {
   return "D";
 }
 
+function strategyValidationClass(status: "pass" | "watch" | "fail" | undefined): string {
+  if (status === "pass") return "bias-bull";
+  if (status === "fail") return "bias-bear";
+  return "bias-neutral";
+}
+
+function isStrategyName(value: string): value is StrategyName {
+  return value in STRATEGY_TEMPLATES;
+}
+
 function defaultStrategyParams(rule: StrategyName): StrategyParamMap {
   return { ...STRATEGY_TEMPLATES[rule].defaults };
 }
@@ -319,6 +329,9 @@ function defaultStrategyParams(rule: StrategyName): StrategyParamMap {
 function recommendedStrategyForPick(
   item: StockScanResponse["results"][number]
 ): StrategyName {
+  if (item.strategy_validation?.status === "pass" && isStrategyName(item.strategy_validation.strategy)) {
+    return item.strategy_validation.strategy;
+  }
   if (
     item.news.score >= 0.6 &&
     item.fundamental.score >= 0.55 &&
@@ -1782,10 +1795,28 @@ export default function App() {
                     </header>
                     <p className="muted">Action: {item.action.toUpperCase()} • Bias: {item.bias.toUpperCase()}</p>
                     <p className="muted">
+                      Live/Open/Close: {fmt(item.market_snapshot.live_price)} / {fmt(item.market_snapshot.open_price)} /{" "}
+                      {fmt(item.market_snapshot.close_price)} • Change {fmt(item.market_snapshot.change_pct)}%
+                    </p>
+                    <p className="muted">
+                      Day H/L: {fmt(item.market_snapshot.day_high)} / {fmt(item.market_snapshot.day_low)} • Vol{" "}
+                      {Math.round(item.market_snapshot.volume).toLocaleString()}
+                    </p>
+                    <p className="muted">
                       News Mode: {item.news.meta?.mode ?? "-"} • Source: {item.news.meta?.source ?? "-"}
+                    </p>
+                    <p className="muted">
+                      Fundamentals: PE {item.fundamental.meta?.pe ?? "-"} • ROE {item.fundamental.meta?.roe ?? "-"}% •
+                      D/E {item.fundamental.meta?.de ?? "-"}
                     </p>
                     <p>
                       <b>News:</b> {item.news.summary || "No headline summary"}
+                    </p>
+                    <p>
+                      <b>Fundamental:</b> {item.fundamental.summary}
+                    </p>
+                    <p>
+                      <b>Technical:</b> {item.technical.summary}
                     </p>
                     <p>
                       <b>Setup:</b> {item.intraday_plan.setup}
@@ -1802,6 +1833,13 @@ export default function App() {
                     <p>
                       <b>RR Est:</b> {fmt(item.intraday_plan.rr_estimate)}
                     </p>
+                    {item.strategy_validation ? (
+                      <p className={`muted ${strategyValidationClass(item.strategy_validation.status)}`}>
+                        Strategy: {item.strategy_validation.strategy} • {item.strategy_validation.status.toUpperCase()} •
+                        Ret {fmt(item.strategy_validation.total_return_pct)}% • Win {fmt(item.strategy_validation.win_rate_pct)}
+                        % • Sharpe {fmt(item.strategy_validation.sharpe)} • Trades {item.strategy_validation.trades}
+                      </p>
+                    ) : null}
                     {scanBacktests[item.symbol] ? (
                       <p className="muted">
                         BT: {fmt(scanBacktests[item.symbol].total_return_pct)}% return •{" "}
@@ -1877,11 +1915,15 @@ export default function App() {
                       <th>Rank</th>
                       <th>Symbol</th>
                       <th>Overall</th>
+                      <th>Live</th>
+                      <th>Open</th>
+                      <th>Close</th>
                       <th>News</th>
                       <th>News Mode</th>
                       <th>Fundamental</th>
                       <th>Breakout</th>
                       <th>Technical</th>
+                      <th>Strategy QA</th>
                       <th>Action</th>
                       <th>Workflow</th>
                     </tr>
@@ -1892,11 +1934,19 @@ export default function App() {
                         <td>{item.rank}</td>
                         <td>{item.symbol}</td>
                         <td>{Math.round(item.overall_score * 100)}%</td>
+                        <td>{fmt(item.market_snapshot.live_price)}</td>
+                        <td>{fmt(item.market_snapshot.open_price)}</td>
+                        <td>{fmt(item.market_snapshot.close_price)}</td>
                         <td>{Math.round(item.news.score * 100)}%</td>
                         <td>{item.news.meta?.mode ?? "-"}</td>
                         <td>{Math.round(item.fundamental.score * 100)}%</td>
                         <td>{Math.round(item.breakout.score * 100)}%</td>
                         <td>{Math.round(item.technical.score * 100)}%</td>
+                        <td>
+                          {item.strategy_validation
+                            ? `${item.strategy_validation.status.toUpperCase()} (${item.strategy_validation.strategy})`
+                            : "-"}
+                        </td>
                         <td>{item.action.toUpperCase()}</td>
                         <td>
                           <button
