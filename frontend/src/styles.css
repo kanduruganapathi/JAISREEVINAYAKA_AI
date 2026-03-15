@@ -607,16 +607,126 @@ textarea {
 .playbook-grid article,
 .idea-card {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--surface-soft);
-  padding: 0.52rem;
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.45rem;
 }
 
-.idea-card header {
+.idea-card header,
+.idea-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.3rem;
+}
+
+.idea-title {
+  display: grid;
+  gap: 0.24rem;
+}
+
+.idea-title strong {
+  font-size: 0.98rem;
+}
+
+.idea-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.badge {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #fff;
+}
+
+.badge.neutral {
+  color: var(--muted);
+}
+
+.idea-price {
+  display: grid;
+  justify-items: end;
+  gap: 0.16rem;
+}
+
+.idea-price .price {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.price-change {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.stat-row,
+.plan-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.35rem;
+}
+
+.stat-row div,
+.plan-row div {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.35rem 0.45rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.stat-row span,
+.plan-row span {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.stat-row strong,
+.plan-row strong {
+  font-size: 0.78rem;
+}
+
+.factor-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.4rem;
+}
+
+.factor-row > div {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.45rem 0.55rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.factor-row span {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.factor-row strong {
+  font-size: 0.8rem;
+}
+
+.factor-row em {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-style: normal;
 }
 
 .card-actions {

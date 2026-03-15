@@ -1787,57 +1787,96 @@ export default function App() {
               <div className="scanner-grid">
                 {scanner.results.slice(0, 8).map((item) => (
                   <article key={item.symbol} className={`idea-card ${biasClass(item.bias)}`}>
-                    <header>
-                      <strong>
-                        #{item.rank} {item.symbol}
-                      </strong>
-                      <span>{Math.round(item.overall_score * 100)}%</span>
+                    <header className="idea-head">
+                      <div className="idea-title">
+                        <strong>
+                          #{item.rank} {item.symbol}
+                        </strong>
+                        <div className="idea-badges">
+                          <span className={`badge ${strategyValidationClass(item.strategy_validation?.status)}`}>
+                            {item.strategy_validation?.status?.toUpperCase() ?? "WATCH"}
+                          </span>
+                          <span className={`badge ${biasClass(item.bias)}`}>{item.action.toUpperCase()}</span>
+                          <span className="badge neutral">Score {Math.round(item.overall_score * 100)}%</span>
+                        </div>
+                      </div>
+                      <div className="idea-price">
+                        <span className="price">{fmt(item.market_snapshot.live_price)}</span>
+                        <span className={`price-change ${biasClass(item.bias)}`}>
+                          {fmt(item.market_snapshot.change_pct)}%
+                        </span>
+                      </div>
                     </header>
-                    <p className="muted">Action: {item.action.toUpperCase()} • Bias: {item.bias.toUpperCase()}</p>
-                    <p className="muted">
-                      Live/Open/Close: {fmt(item.market_snapshot.live_price)} / {fmt(item.market_snapshot.open_price)} /{" "}
-                      {fmt(item.market_snapshot.close_price)} • Change {fmt(item.market_snapshot.change_pct)}%
-                    </p>
-                    <p className="muted">
-                      Day H/L: {fmt(item.market_snapshot.day_high)} / {fmt(item.market_snapshot.day_low)} • Vol{" "}
-                      {Math.round(item.market_snapshot.volume).toLocaleString()}
-                    </p>
-                    <p className="muted">
-                      News Mode: {item.news.meta?.mode ?? "-"} • Source: {item.news.meta?.source ?? "-"}
-                    </p>
-                    <p className="muted">
-                      Fundamentals: PE {item.fundamental.meta?.pe ?? "-"} • ROE {item.fundamental.meta?.roe ?? "-"}% •
-                      D/E {item.fundamental.meta?.de ?? "-"}
-                    </p>
-                    <p>
-                      <b>News:</b> {item.news.summary || "No headline summary"}
-                    </p>
-                    <p>
-                      <b>Fundamental:</b> {item.fundamental.summary}
-                    </p>
-                    <p>
-                      <b>Technical:</b> {item.technical.summary}
-                    </p>
-                    <p>
-                      <b>Setup:</b> {item.intraday_plan.setup}
-                    </p>
-                    <p>
-                      <b>Entry:</b> {item.intraday_plan.entry_zone}
-                    </p>
-                    <p>
-                      <b>Stop:</b> {item.intraday_plan.stop_loss}
-                    </p>
-                    <p>
-                      <b>Targets:</b> {item.intraday_plan.targets.join(" | ")}
-                    </p>
-                    <p>
-                      <b>RR Est:</b> {fmt(item.intraday_plan.rr_estimate)}
-                    </p>
+                    <div className="stat-row">
+                      <div>
+                        <span>Open</span>
+                        <strong>{fmt(item.market_snapshot.open_price)}</strong>
+                      </div>
+                      <div>
+                        <span>Close</span>
+                        <strong>{fmt(item.market_snapshot.close_price)}</strong>
+                      </div>
+                      <div>
+                        <span>Day High</span>
+                        <strong>{fmt(item.market_snapshot.day_high)}</strong>
+                      </div>
+                      <div>
+                        <span>Day Low</span>
+                        <strong>{fmt(item.market_snapshot.day_low)}</strong>
+                      </div>
+                      <div>
+                        <span>Volume</span>
+                        <strong>{Math.round(item.market_snapshot.volume).toLocaleString()}</strong>
+                      </div>
+                    </div>
+                    <div className="factor-row">
+                      <div>
+                        <span>News</span>
+                        <strong>{item.news.summary || "No headline summary"}</strong>
+                        <em>
+                          {item.news.meta?.source ?? "-"} • {item.news.meta?.mode ?? "-"}
+                        </em>
+                      </div>
+                      <div>
+                        <span>Fundamentals</span>
+                        <strong>{item.fundamental.summary}</strong>
+                        <em>
+                          PE {item.fundamental.meta?.pe ?? "-"} • ROE {item.fundamental.meta?.roe ?? "-"}% • D/E{" "}
+                          {item.fundamental.meta?.de ?? "-"}
+                        </em>
+                      </div>
+                      <div>
+                        <span>Technical</span>
+                        <strong>{item.technical.summary}</strong>
+                      </div>
+                    </div>
+                    <div className="plan-row">
+                      <div>
+                        <span>Setup</span>
+                        <strong>{item.intraday_plan.setup}</strong>
+                      </div>
+                      <div>
+                        <span>Entry</span>
+                        <strong>{item.intraday_plan.entry_zone}</strong>
+                      </div>
+                      <div>
+                        <span>Stop</span>
+                        <strong>{item.intraday_plan.stop_loss}</strong>
+                      </div>
+                      <div>
+                        <span>Targets</span>
+                        <strong>{item.intraday_plan.targets.join(" | ")}</strong>
+                      </div>
+                      <div>
+                        <span>RR</span>
+                        <strong>{fmt(item.intraday_plan.rr_estimate)}</strong>
+                      </div>
+                    </div>
                     {item.strategy_validation ? (
                       <p className={`muted ${strategyValidationClass(item.strategy_validation.status)}`}>
-                        Strategy: {item.strategy_validation.strategy} • {item.strategy_validation.status.toUpperCase()} •
-                        Ret {fmt(item.strategy_validation.total_return_pct)}% • Win {fmt(item.strategy_validation.win_rate_pct)}
-                        % • Sharpe {fmt(item.strategy_validation.sharpe)} • Trades {item.strategy_validation.trades}
+                        Strategy: {item.strategy_validation.strategy} • Ret {fmt(item.strategy_validation.total_return_pct)}% •
+                        Win {fmt(item.strategy_validation.win_rate_pct)}% • Sharpe {fmt(item.strategy_validation.sharpe)} •
+                        Trades {item.strategy_validation.trades}
                       </p>
                     ) : null}
                     {scanBacktests[item.symbol] ? (
