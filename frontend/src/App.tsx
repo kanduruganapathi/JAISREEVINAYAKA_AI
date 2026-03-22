@@ -2373,90 +2373,25 @@ export default function App() {
     </>
   );
 
+  const activeView = VIEW_ITEMS.find((x) => x.key === view);
+
   return (
     <div className="pro-app">
-      <div className="orb orb-a" />
-      <div className="orb orb-b" />
-
-      <header className="masthead">
-        <div className="masthead-left">
-          <p className="eyebrow">AI-Powered Trading Workspace</p>
-          <h1>AI TRADE</h1>
-        </div>
-        <div className="masthead-right">
-          <span className="status-chip">API {health}</span>
-          <span className="status-chip">Mode {mode.toUpperCase()}</span>
-          <span className="status-chip">Symbol {symbol}</span>
-          <button onClick={refreshHealth} type="button">
-            Refresh Status
-          </button>
-        </div>
-      </header>
-
-      <section className="command-deck">
-        <form className="analysis-form" onSubmit={runAnalysis}>
-          <label>
-            Symbol
-            <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
-              <option value="NIFTY">NIFTY</option>
-              <option value="BANKNIFTY">BANKNIFTY</option>
-              <option value="SENSEX">SENSEX</option>
-              <option value="RELIANCE">RELIANCE</option>
-              <option value="TCS">TCS</option>
-              <option value="HDFCBANK">HDFCBANK</option>
-              <option value="ICICIBANK">ICICIBANK</option>
-            </select>
-          </label>
-          <label>
-            Segment
-            <select value={segment} onChange={(e) => setSegment(e.target.value)}>
-              <option value="intraday_options">Intraday Index Options</option>
-              <option value="stock_options">Stock Options</option>
-              <option value="equity">Equity</option>
-              <option value="swing_stock">Swing Stock</option>
-            </select>
-          </label>
-          <label>
-            Timeframe
-            <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>
-              <option value="5m">5m</option>
-              <option value="15m">15m</option>
-              <option value="1h">1h</option>
-              <option value="1d">1d</option>
-            </select>
-          </label>
-          <label className="check-inline">
-            <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
-            Alerts
-          </label>
-          <button type="submit" disabled={loading}>
-            {loading ? "Analyzing..." : "Run Analysis"}
-          </button>
-        </form>
-        <div className="action-pills">
-          <button type="button" onClick={runScanner} disabled={loading}>
-            Nifty50 Scan
-          </button>
-          <button type="button" onClick={syncGrowwPortfolio} disabled={loading}>
-            Sync Groww
-          </button>
-          <button type="button" onClick={() => setView("dashboard")}>
-            Open Dashboard
-          </button>
-        </div>
-      </section>
-
-      <section className="market-strip">
-        {dashboardKpis.map((kpi) => (
-          <article key={kpi.label} className={`kpi-tile ${kpi.tone}`}>
-            <p>{kpi.label}</p>
-            <strong>{kpi.value}</strong>
-          </article>
-        ))}
-      </section>
-
       <div className="content-layout">
         <aside className="navigation-rail">
+          <div className="rail-brand">
+            <p className="eyebrow">Institutional Trading Workspace</p>
+            <h1>AI TRADE</h1>
+            <p className="rail-subline">Indian markets intelligence, execution and risk workflow.</p>
+          </div>
+          <div className="rail-status">
+            <span className="status-chip">API {health}</span>
+            <span className="status-chip">Mode {mode.toUpperCase()}</span>
+            <span className="status-chip">Symbol {symbol}</span>
+            <button onClick={refreshHealth} type="button">
+              Refresh Status
+            </button>
+          </div>
           <nav className="nav-list">
             {VIEW_ITEMS.map((item, idx) => (
               <button
@@ -2474,17 +2409,80 @@ export default function App() {
         </aside>
 
         <main className="workspace">
-          <header className="workspace-head">
-            <div>
-              <h2>{VIEW_ITEMS.find((x) => x.key === view)?.label}</h2>
-              <p>{VIEW_ITEMS.find((x) => x.key === view)?.hint}</p>
+          <header className="masthead">
+            <div className="masthead-left">
+              <p className="eyebrow">Trading Command Center</p>
+              <h2>{activeView?.label}</h2>
+              <p>{activeView?.hint}</p>
             </div>
-            <div className="workspace-head-stats">
+            <div className="masthead-right">
               <span>Symbol: {symbol}</span>
               <span>Segment: {segment.replace(/_/g, " ")}</span>
               <span>Timeframe: {timeframe}</span>
             </div>
           </header>
+
+          <section className="command-deck">
+            <form className="analysis-form" onSubmit={runAnalysis}>
+              <label>
+                Symbol
+                <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
+                  <option value="NIFTY">NIFTY</option>
+                  <option value="BANKNIFTY">BANKNIFTY</option>
+                  <option value="SENSEX">SENSEX</option>
+                  <option value="RELIANCE">RELIANCE</option>
+                  <option value="TCS">TCS</option>
+                  <option value="HDFCBANK">HDFCBANK</option>
+                  <option value="ICICIBANK">ICICIBANK</option>
+                </select>
+              </label>
+              <label>
+                Segment
+                <select value={segment} onChange={(e) => setSegment(e.target.value)}>
+                  <option value="intraday_options">Intraday Index Options</option>
+                  <option value="stock_options">Stock Options</option>
+                  <option value="equity">Equity</option>
+                  <option value="swing_stock">Swing Stock</option>
+                </select>
+              </label>
+              <label>
+                Timeframe
+                <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>
+                  <option value="5m">5m</option>
+                  <option value="15m">15m</option>
+                  <option value="1h">1h</option>
+                  <option value="1d">1d</option>
+                </select>
+              </label>
+              <label className="check-inline">
+                <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+                Alerts
+              </label>
+              <button type="submit" disabled={loading}>
+                {loading ? "Analyzing..." : "Run Analysis"}
+              </button>
+            </form>
+            <div className="action-pills">
+              <button type="button" onClick={runScanner} disabled={loading}>
+                Nifty50 Scan
+              </button>
+              <button type="button" onClick={syncGrowwPortfolio} disabled={loading}>
+                Sync Groww
+              </button>
+              <button type="button" onClick={() => setView("dashboard")}>
+                Open Dashboard
+              </button>
+            </div>
+          </section>
+
+          <section className="market-strip">
+            {dashboardKpis.map((kpi) => (
+              <article key={kpi.label} className={`kpi-tile ${kpi.tone}`}>
+                <p>{kpi.label}</p>
+                <strong>{kpi.value}</strong>
+              </article>
+            ))}
+          </section>
 
           <section className="workspace-grid">
             {view === "dashboard" ? renderDashboard() : null}
