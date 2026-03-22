@@ -72,31 +72,32 @@ textarea:focus-visible {
   max-width: 1760px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 292px minmax(0, 1fr);
-  gap: 0.92rem;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 0;
   align-items: start;
+  border: 1px solid #23334a;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b1530;
 }
 
 .navigation-rail {
   position: sticky;
-  top: 0.72rem;
-  height: calc(100vh - 1.44rem);
-  border: 1px solid var(--rail-line);
-  border-radius: 12px;
+  top: 0;
+  height: calc(100vh - 1.44rem - 2px);
+  border-right: 1px solid #2b3b53;
   background: linear-gradient(180deg, #131a23 0%, #10161f 100%);
-  box-shadow: 0 14px 32px rgba(8, 13, 22, 0.28);
+  box-shadow: inset -1px 0 0 rgba(74, 99, 130, 0.25);
   padding: 0.78rem;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
   gap: 0.72rem;
   overflow: auto;
 }
 
 .rail-brand {
-  border: 1px solid var(--rail-line);
-  border-radius: 10px;
-  background: linear-gradient(145deg, #1b2431 0%, #17202b 100%);
-  padding: 0.82rem;
+  border-bottom: 1px solid #2a384f;
+  padding: 0.2rem 0 0.95rem;
 }
 
 .rail-brand-head {
@@ -202,7 +203,8 @@ textarea:focus-visible {
 
 .nav-list {
   display: grid;
-  gap: 0.32rem;
+  gap: 0.22rem;
+  align-content: start;
 }
 
 .nav-item {
@@ -228,9 +230,11 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+}
+
+.nav-icon svg {
+  width: 15px;
+  height: 15px;
 }
 
 .nav-copy {
@@ -241,19 +245,9 @@ textarea:focus-visible {
 
 .nav-copy strong {
   color: var(--rail-text);
-  font-size: 0.81rem;
+  font-size: 0.88rem;
   font-weight: 600;
   line-height: 1.2;
-}
-
-.nav-copy small {
-  margin: 0;
-  color: var(--rail-muted);
-  font-size: 0.66rem;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .nav-item:hover {
@@ -268,7 +262,7 @@ textarea:focus-visible {
 .nav-item.current {
   border-color: #34526d;
   border-left-color: #2bb391;
-  background: rgba(36, 107, 247, 0.19);
+  background: rgba(36, 107, 247, 0.26);
 }
 
 .nav-item.current .nav-icon {
@@ -278,12 +272,12 @@ textarea:focus-visible {
 }
 
 .rail-footer {
-  border: 1px solid var(--rail-line);
+  border-top: 1px solid var(--rail-line);
   border-radius: 8px;
-  background: #152130;
-  padding: 0.6rem;
+  background: transparent;
+  padding: 0.74rem 0.1rem 0.2rem;
   display: grid;
-  gap: 0.3rem;
+  gap: 0.36rem;
 }
 
 .rail-service {
@@ -318,6 +312,7 @@ textarea:focus-visible {
   display: grid;
   gap: 0.72rem;
   min-width: 0;
+  padding: 0.78rem;
 }
 
 .masthead {
@@ -1065,12 +1060,18 @@ button:disabled {
 @media (max-width: 1260px) {
   .content-layout {
     grid-template-columns: 1fr;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .navigation-rail {
     position: static;
     height: auto;
-    grid-template-rows: auto auto auto auto;
+    grid-template-rows: auto auto auto;
+    border-right: 0;
+    border: 1px solid var(--rail-line);
+    border-radius: 10px;
   }
 
   .nav-list {

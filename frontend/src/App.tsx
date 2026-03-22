@@ -22,7 +22,7 @@ type ViewKey =
 
 const VIEW_ITEMS: Array<{ key: ViewKey; label: string; hint: string }> = [
   { key: "dashboard", label: "Trading Dashboard", hint: "Multi-agent decision and confluence" },
-  { key: "scanner", label: "Nifty 50 Scanner", hint: "News + Fundamental + Breakout + Technical" },
+  { key: "scanner", label: "Nifty50 Scan", hint: "News + Fundamental + Breakout + Technical" },
   { key: "options", label: "Options Desk", hint: "Intraday index/stock options playbooks" },
   { key: "strategy", label: "Strategy Lab", hint: "Backtest, validation, expectancy" },
   { key: "portfolio", label: "Portfolio", hint: "Groww sync + risk analytics" },
@@ -31,14 +31,78 @@ const VIEW_ITEMS: Array<{ key: ViewKey; label: string; hint: string }> = [
 ];
 
 const VIEW_ICON: Record<ViewKey, string> = {
-  dashboard: "HM",
-  scanner: "SC",
-  options: "OP",
-  strategy: "BT",
-  portfolio: "PF",
-  execution: "EX",
-  chat: "MI",
+  dashboard: "home",
+  scanner: "scan",
+  options: "option",
+  strategy: "backtest",
+  portfolio: "portfolio",
+  execution: "execution",
+  chat: "chat",
 };
+
+function NavIcon({ kind }: { kind: string }) {
+  if (kind === "home") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M4 10.5L12 4L20 10.5V19C20 19.55 19.55 20 19 20H14V14H10V20H5C4.45 20 4 19.55 4 19V10.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (kind === "scan") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M4 4H10V10H4V4Z" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M14 4H20V10H14V4Z" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M4 14H10V20H4V14Z" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M14 14H20V20H14V14Z" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (kind === "option") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M5 18L9 13L12 16L19 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M15.5 8H19V11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (kind === "backtest") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M12 3V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M12 17V21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M3 12H7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M17 12H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="12" cy="12" r="4.2" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (kind === "portfolio") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none">
+        <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M4 10H20" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M8 14H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (kind === "execution") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M4 12H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M12 4L20 12L12 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M5 6H19V16H9L5 20V6Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="9" cy="11" r="1" fill="currentColor" />
+      <circle cx="12" cy="11" r="1" fill="currentColor" />
+      <circle cx="15" cy="11" r="1" fill="currentColor" />
+    </svg>
+  );
+}
 
 type StrategyName =
   | "smc_breakout"
@@ -758,6 +822,10 @@ export default function App() {
       setHealth("down");
     }
   };
+
+  useEffect(() => {
+    void refreshHealth();
+  }, []);
 
   const runAnalysis = async (e: FormEvent) => {
     e.preventDefault();
@@ -2401,14 +2469,6 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="rail-status">
-            <span className="status-chip">API {health}</span>
-            <span className="status-chip">Mode {mode.toUpperCase()}</span>
-            <span className="status-chip">Symbol {symbol}</span>
-            <button onClick={refreshHealth} type="button">
-              Refresh Status
-            </button>
-          </div>
           <nav className="nav-list">
             {VIEW_ITEMS.map((item) => (
               <button
@@ -2417,10 +2477,11 @@ export default function App() {
                 onClick={() => setView(item.key)}
                 type="button"
               >
-                <span className="nav-icon">{VIEW_ICON[item.key]}</span>
+                <span className="nav-icon">
+                  <NavIcon kind={VIEW_ICON[item.key]} />
+                </span>
                 <span className="nav-copy">
                   <strong>{item.label}</strong>
-                  <small>{item.hint}</small>
                 </span>
               </button>
             ))}
