@@ -30,6 +30,16 @@ const VIEW_ITEMS: Array<{ key: ViewKey; label: string; hint: string }> = [
   { key: "chat", label: "Market Intel", hint: "Scenario Q&A and market intelligence" },
 ];
 
+const VIEW_ICON: Record<ViewKey, string> = {
+  dashboard: "HM",
+  scanner: "SC",
+  options: "OP",
+  strategy: "BT",
+  portfolio: "PF",
+  execution: "EX",
+  chat: "MI",
+};
+
 type StrategyName =
   | "smc_breakout"
   | "ema_cross"
@@ -2374,15 +2384,22 @@ export default function App() {
   );
 
   const activeView = VIEW_ITEMS.find((x) => x.key === view);
+  const healthUp = health.toLowerCase().includes("ok");
 
   return (
     <div className="pro-app">
       <div className="content-layout">
         <aside className="navigation-rail">
           <div className="rail-brand">
-            <p className="eyebrow">Institutional Trading Workspace</p>
-            <h1>AI TRADE</h1>
-            <p className="rail-subline">Indian markets intelligence, execution and risk workflow.</p>
+            <div className="rail-brand-head">
+              <div>
+                <h1>AI TRADE</h1>
+                <p className="rail-subline">Multi-Agent Trading System</p>
+              </div>
+              <button className="rail-collapse" type="button" aria-label="Collapse navigation">
+                {"<<"}
+              </button>
+            </div>
           </div>
           <div className="rail-status">
             <span className="status-chip">API {health}</span>
@@ -2393,22 +2410,34 @@ export default function App() {
             </button>
           </div>
           <nav className="nav-list">
-            {VIEW_ITEMS.map((item, idx) => (
+            {VIEW_ITEMS.map((item) => (
               <button
                 key={item.key}
                 className={`nav-item ${view === item.key ? "current" : ""}`}
                 onClick={() => setView(item.key)}
                 type="button"
               >
-                <em>{String(idx + 1).padStart(2, "0")}</em>
-                <strong>{item.label}</strong>
-                <span>{item.hint}</span>
+                <span className="nav-icon">{VIEW_ICON[item.key]}</span>
+                <span className="nav-copy">
+                  <strong>{item.label}</strong>
+                  <small>{item.hint}</small>
+                </span>
               </button>
             ))}
           </nav>
           <div className="rail-footer">
-            <p>Execution Safety</p>
-            <small>Paper and live books are isolated. Backtest and qualify before live routing.</small>
+            <div className={`rail-service ${healthUp ? "up" : "down"}`}>
+              <span className="service-dot" />
+              <small>Intraday API: 8000</small>
+            </div>
+            <div className={`rail-service ${healthUp ? "up" : "down"}`}>
+              <span className="service-dot" />
+              <small>MCP Server: 8001</small>
+            </div>
+            <div className="rail-service up">
+              <span className="service-dot" />
+              <small>Delivery API: 8002</small>
+            </div>
           </div>
         </aside>
 
