@@ -827,8 +827,7 @@ export default function App() {
     void refreshHealth();
   }, []);
 
-  const runAnalysis = async (e: FormEvent) => {
-    e.preventDefault();
+  const executeAnalysis = async () => {
     setError("");
     setLoading(true);
     try {
@@ -858,6 +857,11 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const runAnalysis = (e: FormEvent) => {
+    e.preventDefault();
+    void executeAnalysis();
   };
 
   const runScanner = async () => {
@@ -2453,6 +2457,11 @@ export default function App() {
 
   const activeView = VIEW_ITEMS.find((x) => x.key === view);
   const healthUp = health.toLowerCase().includes("ok");
+  const workspaceTitle = view === "options" ? "Advanced Options Trading" : activeView?.label ?? "AI TRADE";
+  const workspaceSubtitle =
+    view === "options"
+      ? "Indices & Stock Options | SMC | Price Action | Fundamentals | News"
+      : activeView?.hint ?? "";
 
   return (
     <div className="pro-app">
@@ -2505,19 +2514,19 @@ export default function App() {
         <main className="workspace">
           <header className="masthead">
             <div className="masthead-left">
-              <p className="eyebrow">Trading Command Center</p>
-              <h2>{activeView?.label}</h2>
-              <p>{activeView?.hint}</p>
-              <div className="view-tags">
-                <span>SMC + Price Action</span>
-                <span>Live News Flow</span>
-                <span>Risk-Gated Execution</span>
-              </div>
+              <h2>{workspaceTitle}</h2>
+              <p>{workspaceSubtitle}</p>
             </div>
-            <div className="masthead-right">
-              <span>Symbol: {symbol}</span>
-              <span>Segment: {segment.replace(/_/g, " ")}</span>
-              <span>Timeframe: {timeframe}</span>
+            <div className="masthead-actions">
+              <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>
+                <option value="5m">5 Min</option>
+                <option value="15m">15 Min</option>
+                <option value="1h">1 Hour</option>
+                <option value="1d">1 Day</option>
+              </select>
+              <button type="button" onClick={() => void executeAnalysis()} disabled={loading}>
+                {loading ? "Running..." : "Run Full Analysis"}
+              </button>
             </div>
           </header>
 
